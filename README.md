@@ -1,1 +1,2 @@
-# of_rom
+Reduced Order Modeling for OpenFOAM
+-----------------------------------

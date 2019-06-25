@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Compile DAFoam
+
+function makeSolvers() 
+{
+    sed -e '1d' Make/options_orig > Make/options
+    if [ "$ROM_CompileMode" = "Debug" ]; then
+        sed -i '4i\    \-DFULLDEBUG -g -O0 \\' Make/options
+    fi
+    wmake dep
+    cp Make/options_orig Make/options
+    if [ "$ROM_CompileMode" = "Debug" ]; then
+        sed -i '4i\    \-DFULLDEBUG -g -O0 \\' Make/options
+    fi
+    wmake 
+}
+
+cd src/ReducedOrderModeling
+makeSolvers
+cd ../../
+
+
+cd ./solvers/offlineROM
+makeSolvers
