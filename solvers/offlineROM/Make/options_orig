@@ -1,6 +1,7 @@
 include ${PETSC_DIR}/lib/petsc/conf/variables 
 
 EXE_INC = \
+    -DIncompressibleFlow \
     -std=c++11  \
     -Wno-old-style-cast \
     -Wno-conversion-null \
@@ -15,7 +16,8 @@ EXE_INC = \
     -I$(PETSC_DIR)/$(PETSC_ARCH)/include \
     -I$(SLEPC_DIR)/include \
     -I$(SLEPC_DIR)/$(SLEPC_ARCH)/include \
-    -I../../src/ReducedOrderModeling/lnInclude
+    -I../../src/ReducedOrderModeling/lnInclude \
+    -I$(DAFOAM_DIR)/src/lnInclude 
 
 
 EXE_LIBS = \
@@ -28,5 +30,6 @@ EXE_LIBS = \
     -lsampling \
     -L$(PETSC_LIB) -lpetsc \
     -L$(SLEPC_LIB) -lslepc \
-    -L$(FOAM_USER_LIBBIN) -lReducedOrderModeling
+    -L$(FOAM_USER_LIBBIN) -lReducedOrderModeling \
+    -L$(FOAM_USER_LIBBIN) -lAdjointDerivativeIncompressible
     

@@ -33,9 +33,17 @@ static char help[] = "Offline ROM stage \n\n";
 
 #include <slepcsvd.h>
 #include "fvCFD.H"
+#include "simpleControl.H"
 #include "singlePhaseTransportModel.H"
 #include "turbulentTransportModel.H"
 #include "ReducedOrderModeling.H"
+#include "AdjointIO.H"
+#include "AdjointSolverRegistry.H"
+#include "AdjointRASModel.H"
+#include "AdjointIndexing.H"
+#include "AdjointJacobianConnectivity.H"
+#include "AdjointObjectiveFunction.H"
+#include "AdjointDerivative.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -44,12 +52,16 @@ int main(int argc, char *argv[])
     #include "setRootCase.H"
     #include "createTime.H"
     #include "createMesh.H"
+    #include "createControl.H"
 
     // Initialize the petsc solver. This needs to be called after the case
     // setup so that petsc uses the OpenFOAM MPI_COMM
     SlepcInitialize(&argc,&argv,(char*)0,help);
 
-    ReducedOrderModeling test(mesh);
+    #include "createFields.H"
+
+    rom.initialize();
+    rom.solve();
 
     SlepcFinalize();
  

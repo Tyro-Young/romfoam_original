@@ -32,6 +32,13 @@ Description
 #include "fvOptions.H"
 #include "surfaceFields.H"
 #include <slepcsvd.h>
+#include "AdjointIO.H"
+#include "AdjointSolverRegistry.H"
+#include "AdjointRASModel.H"
+#include "AdjointIndexing.H"
+#include "AdjointJacobianConnectivity.H"
+#include "AdjointObjectiveFunction.H"
+#include "AdjointDerivative.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -50,7 +57,16 @@ private:
     ReducedOrderModeling(const ReducedOrderModeling&);
     void operator=(const ReducedOrderModeling&);
 
-    const fvMesh& mesh_;
+    Foam::Time& runTime_;
+    fvMesh& mesh_;
+
+    AdjointIO& adjIO_;
+    AdjointSolverRegistry& adjReg_;
+    AdjointRASModel& adjRAS_;
+    AdjointIndexing& adjIdx_;
+    AdjointJacobianConnectivity& adjCon_;
+    AdjointObjectiveFunction& adjObj_;
+    AdjointDerivative& adjDev_;
 
 protected:
 
@@ -60,6 +76,12 @@ protected:
     /// A temp dict to store all the ROM parameters and print them to screen later 
     IOdictionary romParameters_; 
 
+    Mat AMat_,BMat_,phiMat_;
+    Vec uVec_,vVec_,sigmaVec_;
+    SVD svd_;
+
+    Mat dRdW_,dRdFFD_;
+
 
 public:
 
@@ -68,14 +90,30 @@ public:
     //- Construct from components
     ReducedOrderModeling
     (
-        const fvMesh& mesh
+        Foam::Time& runTime,
+        fvMesh& mesh,
+        AdjointIO& adjIO,
+        AdjointSolverRegistry& adjReg,
+        AdjointRASModel& adjRAS,
+        AdjointIndexing& adjIdx,
+        AdjointJacobianConnectivity& adjCon,
+        AdjointObjectiveFunction& adjObj,
+        AdjointDerivative& adjDev
     );
 
 
     //- Destructor
     virtual ~ReducedOrderModeling();
 
-    labelList samples;
+    labelList timeSamples;
+
+    void initializeMats();
+    void initializeVecs();
+    void initialize();
+
+    void setSnapshotMat();
+
+    void solve();
 
     /// read an option from dict and add them to romParameters_
     template<class type>
