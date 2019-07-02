@@ -109,9 +109,16 @@ void ReducedOrderModeling::initializeOnline()
     this->initializedRdFFDMatReduced();
     this->initializeSVDPhiMat();
 
-    adjIO_.readMatrixBinary(dRdWReduced_,"dRdWReduced");
-    adjIO_.readMatrixBinary(dRdFFDReduced_,"dRdFFDReduced");
-    adjIO_.readMatrixBinary(svdPhiMat_,"svdPhiMat");
+    label nProcs = Pstream::nProcs();
+    std::ostringstream np("");
+    np<<nProcs;
+    std::string fNamedRdWReduced="dRdWReduced_"+np.str();
+    std::string fNamedRdFFDReduced="dRdFFDReduced_"+np.str();
+    std::string fNamePhi="svdPhiMat_"+np.str();
+
+    adjIO_.readMatrixBinary(dRdWReduced_,fNamedRdWReduced);
+    adjIO_.readMatrixBinary(dRdFFDReduced_,fNamedRdFFDReduced);
+    adjIO_.readMatrixBinary(svdPhiMat_,fNamePhi);
     
     label nFFDs= adjIO_.nFFDPoints;
     VecCreate(PETSC_COMM_WORLD,&deltaFFDVec_);
@@ -240,6 +247,7 @@ void ReducedOrderModeling::setSnapshotMat()
             ),
             mesh_
         );
+        
         forAll(U,cellI)
         {
             for(label i=0;i<3;i++)
@@ -304,7 +312,6 @@ void ReducedOrderModeling::setSnapshotMat()
             MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
   
         }
-
 
         volScalarField nuTilda
         (
@@ -398,7 +405,12 @@ void ReducedOrderModeling::solveOffline()
     MatAssemblyBegin(svdPhiMat_,MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(svdPhiMat_,MAT_FINAL_ASSEMBLY);
 
-    adjIO_.writeMatrixBinary(svdPhiMat_,"svdPhiMat");
+    label nProcs = Pstream::nProcs();
+    std::ostringstream np("");
+    np<<nProcs;
+    std::string fNamePhi="svdPhiMat_"+np.str();
+
+    adjIO_.writeMatrixBinary(svdPhiMat_,fNamePhi);
     //adjIO_.writeMatrixASCII(svdPhiMat_,"svdPhiMat");
 
     MatDestroy(&snapshotMat_);
@@ -417,19 +429,21 @@ void ReducedOrderModeling::solveOffline()
     label transposed=0,isPC=0;
     adjDev_.initializedRdW(&dRdW_,transposed);
 
-    std::ifstream fIn("dRdW.bin");
+    std::string fNamedRdW="dRdW_"+np.str();
+    std::string fNamedRdWBin="dRdW_"+np.str()+".bin";
+    std::ifstream fIn(fNamedRdWBin);
     if(fIn.fail()) 
     {
         Info<<"Calculating dRdW... "<<endl;
         adjDev_.calcdRdW(dRdW_,transposed,isPC);
-        adjIO_.writeMatrixBinary(dRdW_,"dRdW");
+        adjIO_.writeMatrixBinary(dRdW_,fNamedRdW);
     }
     else
     {
         Info<<"Reading dRdW... "<<endl;
         // read 
         PetscViewer viewer;
-        PetscViewerBinaryOpen(PETSC_COMM_WORLD,"dRdW.bin",FILE_MODE_READ,&viewer);
+        PetscViewerBinaryOpen(PETSC_COMM_WORLD,fNamedRdWBin.c_str(),FILE_MODE_READ,&viewer);
         MatLoad(dRdW_,viewer);
         MatAssemblyBegin(dRdW_,MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(dRdW_,MAT_FINAL_ASSEMBLY);
@@ -439,7 +453,7 @@ void ReducedOrderModeling::solveOffline()
     adjCon_.deletedRdWCon();
 
     //******************************** Compute dRdWReduced *****************************//
-    Mat svdPhiMatT, svdPhiMatTdRdW;
+    Mat svdPhiMatT,dRdWsvdPhiMat;
 
     Info<< "Transposing Phi to PhiT" << endl;
     MatTranspose(svdPhiMat_,MAT_INITIAL_MATRIX,&svdPhiMatT);
@@ -448,31 +462,32 @@ void ReducedOrderModeling::solveOffline()
 
     Info<< "Computing svdPhiT*dRdW*svdPhi" << endl;
     this->initializedRdWMatReduced();
-    // Compute first part of (svdPhiT*dRdW)
-    MatMatMult(svdPhiMatT,dRdW_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&svdPhiMatTdRdW);
-    // Compute second part of (svdPhiT*dRdW*svdPhi)
-    MatMatMult(svdPhiMatTdRdW,svdPhiMat_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
+    MatMatMult(dRdW_,svdPhiMat_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWsvdPhiMat);
+    MatMatMult(svdPhiMatT,dRdWsvdPhiMat,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
 
-    adjIO_.writeMatrixBinary(dRdWReduced_,"dRdWReduced");
-    adjIO_.writeMatrixASCII(dRdWReduced_,"dRdWReduced");
+    std::string fNamedRdWReduced="dRdWReduced_"+np.str();
+    adjIO_.writeMatrixBinary(dRdWReduced_,fNamedRdWReduced);
+    adjIO_.writeMatrixASCII(dRdWReduced_,fNamedRdWReduced);
 
     MatDestroy(&dRdW_);
 
     this->initializedRdFFDMat();
     
-    std::ifstream fIn1("dRdFFD.bin");
+    std::string fNamedRdFFD="dRdFFD_"+np.str();
+    std::string fNamedRdFFDBin="dRdFFD_"+np.str()+".bin";
+    std::ifstream fIn1(fNamedRdFFDBin);
     if(fIn1.fail()) 
     {
         Info<<"Calculating dRdW... "<<endl;
         adjDev_.calcdRdFFD(dRdFFD_);
-        adjIO_.writeMatrixBinary(dRdFFD_,"dRdFFD");
+        adjIO_.writeMatrixBinary(dRdFFD_,fNamedRdFFD);
     }
     else
     {
         Info<<"Reading dRdFFD... "<<endl;
         // read 
         PetscViewer viewer;
-        PetscViewerBinaryOpen(PETSC_COMM_WORLD,"dRdFFD.bin",FILE_MODE_READ,&viewer);
+        PetscViewerBinaryOpen(PETSC_COMM_WORLD,fNamedRdFFDBin.c_str(),FILE_MODE_READ,&viewer);
         MatLoad(dRdFFD_,viewer);
         MatAssemblyBegin(dRdFFD_,MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(dRdFFD_,MAT_FINAL_ASSEMBLY);
@@ -485,8 +500,9 @@ void ReducedOrderModeling::solveOffline()
     this->initializedRdFFDMatReduced();
     MatMatMult(svdPhiMatT,dRdFFD_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdFFDReduced_);
 
-    adjIO_.writeMatrixBinary(dRdFFDReduced_,"dRdFFDReduced");
-    adjIO_.writeMatrixASCII(dRdFFDReduced_,"dRdFFDReduced");
+    std::string fNamedRdFFDReduced="dRdFFDReduced_"+np.str();
+    adjIO_.writeMatrixBinary(dRdFFDReduced_,fNamedRdFFDReduced);
+    adjIO_.writeMatrixASCII(dRdFFDReduced_,fNamedRdFFDReduced);
 
 }
 

@@ -33,7 +33,7 @@ task = args.task
 outputDirectory = args.output
 gcomm = MPI.COMM_WORLD
 
-rampAngle0=17.0
+rampAngle0=15.0
 
 # Set the parameters for optimization
 aeroOptions = {
@@ -269,11 +269,11 @@ elif task.lower() == 'run':
         print funcs
     
     # Evaluate the sensitivities
-    #funcsSens = {}
-    #funcsSens,fail = optFuncs.aeroFuncsSens(xDV,funcs)
+    funcsSens = {}
+    funcsSens,fail = optFuncs.aeroFuncsSens(xDV,funcs)
     
-    #if gcomm.rank == 0:
-    #    print funcsSens
+    if gcomm.rank == 0:
+        print funcsSens
 
 elif task.lower() == 'writedeltavolmat':
 
