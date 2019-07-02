@@ -85,6 +85,10 @@ ReducedOrderModeling::ReducedOrderModeling
     // read
     timeSamples               = readOptionOrDefault<labelList>(romDict_,"timeSamples",{});
     deltaFFD                  = readOptionOrDefault<scalarList>(romDict_,"deltaFFD",{});
+    svdType                   = readOptionOrDefault<word>(romDict_,"svdType","cross");
+    svdTol                    = readOptionOrDefault<scalar>(romDict_,"svdTol",1e-8);
+    svdMaxIts                 = readOptionOrDefault<label>(romDict_,"svdMaxIts",100);
+    svdRequestedN             = readOptionOrDefault<label>(romDict_,"svdRequestedN",1);
 
     // print all the parameters to screen    
     Info<<"ROM Parameters"<<romParameters_<<endl;
@@ -359,26 +363,39 @@ void ReducedOrderModeling::solveOffline()
     PetscInt Istart,Iend;
     MatGetOwnershipRange(svdPhiMat_,&Istart,&Iend);
 
+
+    Info<<"Solving the SVD..."<<endl;
     SVD svd;
     SVDCreate(PETSC_COMM_WORLD,&svd);
     SVDSetOperator(svd,snapshotMat_);
     SVDSetFromOptions(svd);
+
+    if (svdType=="cross") SVDSetType(svd,SVDCROSS);
+    else if (svdType=="cyclic") SVDSetType(svd,SVDCYCLIC);
+    else if (svdType=="lapack") SVDSetType(svd,SVDLAPACK);
+    else if (svdType=="lanczos") SVDSetType(svd,SVDTRLANCZOS);
+    else if (svdType=="trlanczos") SVDSetType(svd,SVDTRLANCZOS);
+    else
+    {
+        FatalErrorIn("")<<"svdType not supported!"<<
+         "options are: cross, cyclic, lapack, lanczos, trlanczos"<< abort(FatalError);
+    }
+
+    SVDSetTolerances(svd,svdTol,svdMaxIts);
+    SVDSetDimensions(svd,svdRequestedN,2*svdRequestedN,PETSC_DEFAULT);
+    
 
     SVDSolve(svd);
 
     // Output SVD solution diagnostics
     SVDGetIterationNumber(svd,&its);
     PetscPrintf(PETSC_COMM_WORLD," Number of iterations of the method: %D\n",its);
-
     SVDGetType(svd,&type);
-    PetscPrintf(PETSC_COMM_WORLD," Solution method: %s\n\n",type);
-
+    PetscPrintf(PETSC_COMM_WORLD," Solution method: %s\n",type);
     SVDGetDimensions(svd,&nsv,NULL,NULL);
     PetscPrintf(PETSC_COMM_WORLD," Number of requested singular values: %D\n",nsv);
-
     SVDGetTolerances(svd,&tol,&maxit);
     PetscPrintf(PETSC_COMM_WORLD," Stopping condition: tol=%.4g, maxit=%D\n",(double)tol,maxit);
-
     SVDGetConverged(svd,&nconv);
     PetscPrintf(PETSC_COMM_WORLD," Number of converged approximate singular triplets: %D\n\n",nconv);
 
@@ -391,7 +408,7 @@ void ReducedOrderModeling::solveOffline()
     {
         // Get converged singular triplets: i-th singular value is stored in sigma
         SVDGetSingularTriplet(svd,i,&sigma,uVec_,vVec_);
-        Info<<sigma<<endl;
+        Info<<"  "<<sigma<<endl;
         PetscScalar *uVecArray;
         VecGetArray(uVec_,&uVecArray);
         for(label j=Istart;j<Iend;j++)

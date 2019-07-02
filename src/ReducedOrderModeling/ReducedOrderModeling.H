@@ -103,6 +103,10 @@ public:
 
     labelList timeSamples;
     scalarList deltaFFD;
+    word svdType;
+    scalar svdTol;
+    label svdMaxIts;
+    label svdRequestedN;
 
     void initializeSnapshotMat();
     void initializedRdFFDMat();
