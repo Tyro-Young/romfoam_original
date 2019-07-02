@@ -10,4 +10,7 @@ cd ./solvers/offlineROM
 wclean
 rm Make/options
 
+cd ../onlineROM
+wclean
+rm Make/options
 

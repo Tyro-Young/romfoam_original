@@ -84,6 +84,7 @@ ReducedOrderModeling::ReducedOrderModeling
 
     // read
     timeSamples               = readOptionOrDefault<labelList>(romDict_,"timeSamples",{});
+    deltaFFD                  = readOptionOrDefault<scalarList>(romDict_,"deltaFFD",{});
 
     // print all the parameters to screen    
     Info<<"ROM Parameters"<<romParameters_<<endl;
@@ -94,55 +95,128 @@ ReducedOrderModeling::~ReducedOrderModeling()
 {
 }
 
-void ReducedOrderModeling::initialize()
+void ReducedOrderModeling::initializeOffline()
 {
-    this->initializeMats();
-    this->initializeVecs();
+    
+    this->initializeSnapshotMat();
 
 }
 
-void ReducedOrderModeling::initializeMats()
+void ReducedOrderModeling::initializeOnline()
+{
+    
+    this->initializedRdWMatReduced();
+    this->initializedRdFFDMatReduced();
+    this->initializeSVDPhiMat();
+
+    adjIO_.readMatrixBinary(dRdWReduced_,"dRdWReduced");
+    adjIO_.readMatrixBinary(dRdFFDReduced_,"dRdFFDReduced");
+    adjIO_.readMatrixBinary(svdPhiMat_,"svdPhiMat");
+    
+    label nFFDs= adjIO_.nFFDPoints;
+    VecCreate(PETSC_COMM_WORLD,&deltaFFDVec_);
+    VecSetSizes(deltaFFDVec_,PETSC_DECIDE,nFFDs);
+    VecSetFromOptions(deltaFFDVec_);
+
+    label Istart,Iend;
+    VecGetOwnershipRange(deltaFFDVec_,&Istart,&Iend);
+
+    for(label i=Istart;i<Iend;i++)
+    {
+        scalar val=deltaFFD[i];
+        VecSetValue(deltaFFDVec_,i,val,INSERT_VALUES);
+    }
+    VecAssemblyBegin(deltaFFDVec_);
+    VecAssemblyEnd(deltaFFDVec_);
+    
+
+}
+
+void ReducedOrderModeling::initializeSnapshotMat()
 {
     Info<<"Initializing the Snapshot matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
     // now initialize the memory for the jacobian itself
     label localSize = adjIdx_.nLocalAdjointStates;
     label nInstances = timeSamples.size();
-    // create AMat_
-    MatCreate(PETSC_COMM_WORLD,&AMat_);
-    MatSetSizes(AMat_,localSize,PETSC_DECIDE,PETSC_DETERMINE,nInstances);
-    MatSetFromOptions(AMat_);
-    MatMPIAIJSetPreallocation(AMat_,nInstances,NULL,nInstances,NULL);
-    MatSeqAIJSetPreallocation(AMat_,nInstances,NULL);
-    MatSetOption(AMat_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-    MatSetUp(AMat_);
+    // create snapshotMat_
+    MatCreate(PETSC_COMM_WORLD,&snapshotMat_);
+    MatSetSizes(snapshotMat_,localSize,PETSC_DECIDE,PETSC_DETERMINE,nInstances);
+    MatSetFromOptions(snapshotMat_);
+    MatMPIAIJSetPreallocation(snapshotMat_,nInstances,NULL,nInstances,NULL);
+    MatSeqAIJSetPreallocation(snapshotMat_,nInstances,NULL);
+    MatSetUp(snapshotMat_);
     Info<<"Snapshot matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
+    return;
+}
+
+void ReducedOrderModeling::initializedRdFFDMat()
+{
+    //******************************** Compute dRdFFD *****************************//
+    Info<<"Initializing the dRdFFD matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+    // create dRdFFD_
+    label localSize = adjIdx_.nLocalAdjointStates;
+    MatCreate(PETSC_COMM_WORLD,&dRdFFD_);
+    MatSetSizes(dRdFFD_,localSize,PETSC_DECIDE,PETSC_DETERMINE,adjIO_.nFFDPoints);
+    MatSetFromOptions(dRdFFD_);
+    MatMPIAIJSetPreallocation(dRdFFD_,adjIO_.nFFDPoints,NULL,adjIO_.nFFDPoints,NULL);
+    MatSeqAIJSetPreallocation(dRdFFD_,adjIO_.nFFDPoints,NULL);
+    MatSetOption(dRdFFD_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+    MatSetUp(dRdFFD_);
+    Info<<"dRdFFD matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+    return;
+}
+
+void ReducedOrderModeling::initializeSVDPhiMat()
+{
     Info<<"Initializing the Phi matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
-    // create phiMat_
-    MatCreate(PETSC_COMM_WORLD,&phiMat_);
-    MatSetSizes(phiMat_,localSize,PETSC_DECIDE,PETSC_DETERMINE,nInstances);
-    MatSetFromOptions(phiMat_);
-    MatMPIAIJSetPreallocation(phiMat_,nInstances,NULL,nInstances,NULL);
-    MatSeqAIJSetPreallocation(phiMat_,nInstances,NULL);
-    MatSetOption(phiMat_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-    MatSetUp(phiMat_);
+    // create svdPhiMat_
+    label localSize = adjIdx_.nLocalAdjointStates;
+    label nInstances = timeSamples.size();
+    MatCreate(PETSC_COMM_WORLD,&svdPhiMat_);
+    MatSetSizes(svdPhiMat_,localSize,PETSC_DECIDE,PETSC_DETERMINE,nInstances);
+    MatSetFromOptions(svdPhiMat_);
+    MatMPIAIJSetPreallocation(svdPhiMat_,nInstances,NULL,nInstances,NULL);
+    MatSeqAIJSetPreallocation(svdPhiMat_,nInstances,NULL);
+    MatSetOption(svdPhiMat_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+    MatSetUp(svdPhiMat_);
     Info<<"Phi matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
     return;
 }
 
-void ReducedOrderModeling::initializeVecs()
+void ReducedOrderModeling::initializedRdWMatReduced()
 {
-    Info<<"Initializing vectors. "<<runTime_.elapsedClockTime()<<" s"<<endl;
-
-    MatCreateVecs(AMat_,&vVec_,&uVec_);
-
+    Info<<"Initializing dRdWReduced matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
     label nInstances = timeSamples.size();
-    VecCreate(PETSC_COMM_WORLD,&sigmaVec_);
-    VecSetSizes(sigmaVec_,PETSC_DECIDE,nInstances);
-    VecSetFromOptions(sigmaVec_);
+    MatCreate(PETSC_COMM_WORLD,&dRdWReduced_);
+    MatSetSizes(dRdWReduced_,PETSC_DECIDE,PETSC_DECIDE,nInstances,nInstances);
+    MatSetFromOptions(dRdWReduced_);
+    MatMPIAIJSetPreallocation(dRdWReduced_,nInstances,NULL,nInstances,NULL);
+    MatSeqAIJSetPreallocation(dRdWReduced_,nInstances,NULL);
+    MatSetOption(dRdWReduced_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+    MatSetUp(dRdWReduced_);
 
-    Info<<"Vectors created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+    Info<<"dRdWReduced matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+
+    return;
+}
+
+void ReducedOrderModeling::initializedRdFFDMatReduced()
+{
+    Info<<"Initializing the dRdFFDReduced matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+    label nFFDs= adjIO_.nFFDPoints;
+    label nInstances = timeSamples.size();
+    MatCreate(PETSC_COMM_WORLD,&dRdFFDReduced_);
+    MatSetSizes(dRdFFDReduced_,PETSC_DECIDE,PETSC_DECIDE,nInstances,nFFDs);
+    MatSetFromOptions(dRdFFDReduced_);
+    MatMPIAIJSetPreallocation(dRdFFDReduced_,nFFDs,NULL,nFFDs,NULL);
+    MatSeqAIJSetPreallocation(dRdFFDReduced_,nFFDs,NULL);
+    MatSetOption(dRdFFDReduced_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+    MatSetUp(dRdFFDReduced_);
+
+    Info<<"dRdFFDReduced matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+
     return;
 }
 
@@ -173,7 +247,7 @@ void ReducedOrderModeling::setSnapshotMat()
                 PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex("U",cellI,i);
                 PetscInt colI = idxI;
                 PetscScalar val = U[cellI][i];
-                MatSetValues(AMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+                MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
             }
         }
 
@@ -195,7 +269,7 @@ void ReducedOrderModeling::setSnapshotMat()
             PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex("p",cellI);
             PetscInt colI = idxI;
             PetscScalar val = p[cellI];
-            MatSetValues(AMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+            MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
         }
 
         surfaceScalarField phi
@@ -227,7 +301,7 @@ void ReducedOrderModeling::setSnapshotMat()
                 label faceIdx=adjIdx_.bFaceFaceI[relIdx];
                 val = phi.boundaryField()[patchIdx][faceIdx];
             } 
-            MatSetValues(AMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+            MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
   
         }
 
@@ -250,20 +324,20 @@ void ReducedOrderModeling::setSnapshotMat()
             PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex("nuTilda",cellI);
             PetscInt colI = idxI;
             PetscScalar val = nuTilda[cellI];
-            MatSetValues(AMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+            MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
         }
 
     }
 
-    Info<< "Begin assemblying Amat" << endl;
-    MatAssemblyBegin(AMat_,MAT_FINAL_ASSEMBLY);
-    Info<< "End assemblying Amat" << endl;
-    MatAssemblyEnd(AMat_,MAT_FINAL_ASSEMBLY);
+    MatAssemblyBegin(snapshotMat_,MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(snapshotMat_,MAT_FINAL_ASSEMBLY);
+
+    //adjIO_.writeMatrixASCII(snapshotMat_,"snapshotMat");
 
     Info<<"The snapshot matrix is set. "<<runTime_.elapsedClockTime()<<" s"<<endl;
 }
 
-void ReducedOrderModeling::solve()
+void ReducedOrderModeling::solveOffline()
 {
     PetscInt       nsv,maxit,nconv,its;
     PetscScalar    tol,sigma,val;
@@ -271,65 +345,66 @@ void ReducedOrderModeling::solve()
 
     this->setSnapshotMat();
 
+    MatCreateVecs(snapshotMat_,&vVec_,&uVec_);
+
+    this->initializeSVDPhiMat();
+
     PetscInt Istart,Iend;
-    MatGetOwnershipRange(phiMat_,&Istart,&Iend);
+    MatGetOwnershipRange(svdPhiMat_,&Istart,&Iend);
 
-    SVDCreate(PETSC_COMM_WORLD,&svd_);
-    SVDSetOperator(svd_,AMat_);
-    SVDSetFromOptions(svd_);
+    SVD svd;
+    SVDCreate(PETSC_COMM_WORLD,&svd);
+    SVDSetOperator(svd,snapshotMat_);
+    SVDSetFromOptions(svd);
 
-    SVDSolve(svd_);
+    SVDSolve(svd);
 
     // Output SVD solution diagnostics
-    SVDGetIterationNumber(svd_,&its);
+    SVDGetIterationNumber(svd,&its);
     PetscPrintf(PETSC_COMM_WORLD," Number of iterations of the method: %D\n",its);
 
-    SVDGetType(svd_,&type);
+    SVDGetType(svd,&type);
     PetscPrintf(PETSC_COMM_WORLD," Solution method: %s\n\n",type);
 
-    SVDGetDimensions(svd_,&nsv,NULL,NULL);
+    SVDGetDimensions(svd,&nsv,NULL,NULL);
     PetscPrintf(PETSC_COMM_WORLD," Number of requested singular values: %D\n",nsv);
 
-    SVDGetTolerances(svd_,&tol,&maxit);
+    SVDGetTolerances(svd,&tol,&maxit);
     PetscPrintf(PETSC_COMM_WORLD," Stopping condition: tol=%.4g, maxit=%D\n",(double)tol,maxit);
 
-    SVDGetConverged(svd_,&nconv);
+    SVDGetConverged(svd,&nconv);
     PetscPrintf(PETSC_COMM_WORLD," Number of converged approximate singular triplets: %D\n\n",nconv);
 
-    if (nconv>0) 
+
+    // Display singular values and relative errors
+    PetscPrintf(PETSC_COMM_WORLD,
+     "          sigma         \n"
+     "  --------------------- \n");
+    for (label i=0;i<nconv;i++) 
     {
-        // Display singular values and relative errors
-        PetscPrintf(PETSC_COMM_WORLD,
-         "          sigma           relative error\n"
-         "  --------------------- ------------------\n");
-        for (label i=0;i<nconv;i++) 
+        // Get converged singular triplets: i-th singular value is stored in sigma
+        SVDGetSingularTriplet(svd,i,&sigma,uVec_,vVec_);
+        Info<<sigma<<endl;
+        PetscScalar *uVecArray;
+        VecGetArray(uVec_,&uVecArray);
+        for(label j=Istart;j<Iend;j++)
         {
-            // Get converged singular triplets: i-th singular value is stored in sigma
-            SVDGetSingularTriplet(svd_,i,&sigma,uVec_,vVec_);
-
-            Info<<sigma<<endl;
-
-            VecSetValues(sigmaVec_,1,&i,&sigma,INSERT_VALUES);
-
-            PetscScalar *uVecArray;
-            VecGetArray(uVec_,&uVecArray);
-
-            for(label j=Istart;j<Iend;j++)
-            {
-                label relIdx = j-Istart;
-                val = uVecArray[relIdx];
-                MatSetValues(phiMat_,1,&j,1,&i,&val,INSERT_VALUES);
-            }
-
-            VecRestoreArray(uVec_,&uVecArray);
+            label relIdx = j-Istart;
+            val = uVecArray[relIdx];
+            MatSetValues(svdPhiMat_,1,&j,1,&i,&val,INSERT_VALUES);
         }
-
-        VecAssemblyBegin(sigmaVec_);
-        VecAssemblyEnd(sigmaVec_);
-
-        MatAssemblyBegin(phiMat_,MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(phiMat_,MAT_FINAL_ASSEMBLY);
+        VecRestoreArray(uVec_,&uVecArray);
     }
+    MatAssemblyBegin(svdPhiMat_,MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(svdPhiMat_,MAT_FINAL_ASSEMBLY);
+
+    adjIO_.writeMatrixBinary(svdPhiMat_,"svdPhiMat");
+    //adjIO_.writeMatrixASCII(svdPhiMat_,"svdPhiMat");
+
+    MatDestroy(&snapshotMat_);
+    SVDDestroy(&svd);
+
+    Info<<"Calculating dRdW and dRdFFD at time = "<<runTime_.timeName()<<endl;
 
     //******************************** Compute dRdW *****************************//
     // compute preallocation vecs for dRdW 
@@ -342,56 +417,266 @@ void ReducedOrderModeling::solve()
     label transposed=0,isPC=0;
     adjDev_.initializedRdW(&dRdW_,transposed);
 
-    adjDev_.calcdRdW(dRdW_,transposed,isPC);
+    std::ifstream fIn("dRdW.bin");
+    if(fIn.fail()) 
+    {
+        Info<<"Calculating dRdW... "<<endl;
+        adjDev_.calcdRdW(dRdW_,transposed,isPC);
+        adjIO_.writeMatrixBinary(dRdW_,"dRdW");
+    }
+    else
+    {
+        Info<<"Reading dRdW... "<<endl;
+        // read 
+        PetscViewer viewer;
+        PetscViewerBinaryOpen(PETSC_COMM_WORLD,"dRdW.bin",FILE_MODE_READ,&viewer);
+        MatLoad(dRdW_,viewer);
+        MatAssemblyBegin(dRdW_,MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(dRdW_,MAT_FINAL_ASSEMBLY);
+        PetscViewerDestroy(&viewer);
+    }
 
     adjCon_.deletedRdWCon();
 
-    //******************************** Compute Ar *****************************//
-    Mat AMatR, phiMatT, phiMatTAMat,BMatR;
+    //******************************** Compute dRdWReduced *****************************//
+    Mat svdPhiMatT, svdPhiMatTdRdW;
 
     Info<< "Transposing Phi to PhiT" << endl;
-    MatTranspose(phiMat_,MAT_INITIAL_MATRIX,&phiMatT);
-    MatAssemblyBegin(phiMatT,MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(phiMatT,MAT_FINAL_ASSEMBLY);
+    MatTranspose(svdPhiMat_,MAT_INITIAL_MATRIX,&svdPhiMatT);
+    MatAssemblyBegin(svdPhiMatT,MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(svdPhiMatT,MAT_FINAL_ASSEMBLY);
 
-    // Compute first part of Ar (PhiT*A)
-    Info<< "Computing PhiT*A" << endl;
-    MatMatMult(phiMatT,dRdW_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&phiMatTAMat);
+    Info<< "Computing svdPhiT*dRdW*svdPhi" << endl;
+    this->initializedRdWMatReduced();
+    // Compute first part of (svdPhiT*dRdW)
+    MatMatMult(svdPhiMatT,dRdW_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&svdPhiMatTdRdW);
+    // Compute second part of (svdPhiT*dRdW*svdPhi)
+    MatMatMult(svdPhiMatTdRdW,svdPhiMat_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
 
-    // Compute second part of Ar (PhiT*A*Phi)
-    Info<< "Computing PhiTA*Phi" << endl;
-    MatMatMult(phiMatTAMat,phiMat_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&AMatR);
-
-    adjIO_.writeMatrixBinary(AMatR,"AMatR");
-    adjIO_.writeMatrixASCII(AMatR,"AMatR");
+    adjIO_.writeMatrixBinary(dRdWReduced_,"dRdWReduced");
+    adjIO_.writeMatrixASCII(dRdWReduced_,"dRdWReduced");
 
     MatDestroy(&dRdW_);
 
-    //******************************** Compute dRdFFD *****************************//
-    Info<<"Initializing the dRdFFD matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
-    // create dRdFFD_
-    label localSize = adjIdx_.nLocalAdjointStates;
-    MatCreate(PETSC_COMM_WORLD,&dRdFFD_);
-    MatSetSizes(dRdFFD_,localSize,PETSC_DECIDE,PETSC_DETERMINE,adjIO_.nFFDPoints);
-    MatSetFromOptions(dRdFFD_);
-    MatMPIAIJSetPreallocation(dRdFFD_,adjIO_.nFFDPoints,NULL,adjIO_.nFFDPoints,NULL);
-    MatSeqAIJSetPreallocation(dRdFFD_,adjIO_.nFFDPoints,NULL);
-    MatSetOption(dRdFFD_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-    MatSetUp(dRdFFD_);
-    Info<<"dRdFFD matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
-
-    adjDev_.calcdRdFFD(dRdFFD_);
+    this->initializedRdFFDMat();
+    
+    std::ifstream fIn1("dRdFFD.bin");
+    if(fIn1.fail()) 
+    {
+        Info<<"Calculating dRdW... "<<endl;
+        adjDev_.calcdRdFFD(dRdFFD_);
+        adjIO_.writeMatrixBinary(dRdFFD_,"dRdFFD");
+    }
+    else
+    {
+        Info<<"Reading dRdFFD... "<<endl;
+        // read 
+        PetscViewer viewer;
+        PetscViewerBinaryOpen(PETSC_COMM_WORLD,"dRdFFD.bin",FILE_MODE_READ,&viewer);
+        MatLoad(dRdFFD_,viewer);
+        MatAssemblyBegin(dRdFFD_,MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(dRdFFD_,MAT_FINAL_ASSEMBLY);
+        PetscViewerDestroy(&viewer);
+    }
+    
 
     //******************************** Compute Br *****************************//
-    Info<< "Computing PhiT*B" << endl;
-    MatMatMult(phiMatT,dRdFFD_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&BMatR);
+    Info<< "Computing svdPhiT*dRdFFD" << endl;
+    this->initializedRdFFDMatReduced();
+    MatMatMult(svdPhiMatT,dRdFFD_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdFFDReduced_);
 
-    adjIO_.writeMatrixBinary(BMatR,"BMatR");
-    adjIO_.writeMatrixASCII(BMatR,"BMatR");
-
+    adjIO_.writeMatrixBinary(dRdFFDReduced_,"dRdFFDReduced");
+    adjIO_.writeMatrixASCII(dRdFFDReduced_,"dRdFFDReduced");
 
 }
 
+void ReducedOrderModeling::setNewField(Vec deltaWVec)
+{
+    const objectRegistry& db_(mesh_.thisDb());
+
+    label Istart,Iend;
+    label cellI,comp,faceI;
+    VecGetOwnershipRange(deltaWVec,&Istart,&Iend);
+
+    PetscScalar *deltaWArray;
+    VecGetArray(deltaWVec,&deltaWArray);
+
+    for(label i=Istart;i<Iend;i++)
+    {
+        label relIdx = i-Istart;
+        word stateName = adjIdx_.adjStateName4LocalAdjIdx[relIdx];
+        word newStateName = stateName+"ROM";
+        scalar cellIFaceI = adjIdx_.cellIFaceI4LocalAdjIdx[relIdx];
+        const word& stateType = adjIdx_.adjStateType[stateName];
+
+        if(stateType == "volVectorState")
+        {
+            volVectorField& state
+            (
+                const_cast<volVectorField&>                                             
+                ( 
+                    db_.lookupObject<volVectorField>(stateName)
+                )
+            );
+
+            cellI = round(cellIFaceI);
+            comp = round(10*(cellIFaceI-cellI));
+            state[cellI][comp] += deltaWArray[relIdx];
+        }
+        else if(stateType == "volScalarState" or stateType == "turbState")
+        {
+            volScalarField& state
+            (
+                const_cast<volScalarField&>                                             
+                ( 
+                    db_.lookupObject<volScalarField>(stateName)
+                )
+            );
+
+            cellI = round(cellIFaceI);
+            state[cellI] += deltaWArray[relIdx];
+        }
+        else if(stateType == "surfaceScalarState")
+        {
+            surfaceScalarField& state
+            (
+                const_cast<surfaceScalarField&>                                             
+                ( 
+                    db_.lookupObject<surfaceScalarField>(stateName)
+                )
+            );
+            faceI = round(cellIFaceI);
+            if(faceI<adjIdx_.nLocalInternalFaces)
+            {
+                state[faceI] += deltaWArray[relIdx];
+            }
+            else
+            {
+                label relIdx=faceI-adjIdx_.nLocalInternalFaces;
+                label patchIdx=adjIdx_.bFacePatchI[relIdx];
+                label faceIdx=adjIdx_.bFaceFaceI[relIdx];
+                state.boundaryFieldRef()[patchIdx][faceIdx] += deltaWArray[relIdx];
+            }
+        }
+        else
+        {
+            FatalErrorIn("")<<"stateType not known"<< abort(FatalError);
+        }
+    }
+    
+    VecRestoreArray(deltaWVec,&deltaWArray);
+
+    // write
+    forAll(adjReg_.volVectorStates,idxI)                                           
+    {        
+        // create state and stateRef
+        makeState(volVectorStates,volVectorField,adjReg_); 
+        word oldName=state.name();
+        word newName=state.name()+"ROM";
+        state.correctBoundaryConditions();
+        state.rename(newName);
+        state.write();       
+        state.rename(oldName);                                                             
+    }
+
+    forAll(adjReg_.volScalarStates,idxI)
+    {
+        // create state and stateRef
+        makeState(volScalarStates,volScalarField,adjReg_);
+        word oldName=state.name();
+        word newName=state.name()+"ROM";
+        state.correctBoundaryConditions();
+        state.rename(newName);
+        state.write();       
+        state.rename(oldName);   
+    }
+
+    forAll(adjRAS_.turbStates,idxI)
+    {
+        // create state and stateRef
+        makeState(turbStates,volScalarField,adjRAS_);
+        word oldName=state.name();
+        word newName=state.name()+"ROM";
+        state.correctBoundaryConditions();
+        state.rename(newName);
+        state.write();       
+        state.rename(oldName); 
+
+    }
+
+    forAll(adjReg_.surfaceScalarStates,idxI)
+    {
+        // create state and stateRef
+        makeState(surfaceScalarStates,surfaceScalarField,adjReg_);
+        word oldName=state.name();
+        word newName=state.name()+"ROM";
+        state.rename(newName);
+        state.write();       
+        state.rename(oldName); 
+    }
+
+}
+
+void ReducedOrderModeling::solveOnline()
+{
+    KSP ksp;
+    // add options and initialize ksp
+    dictionary adjOptions;
+    adjOptions.add("GMRESRestart",adjIO_.nkGMRESRestart);
+    adjOptions.add("GlobalPCIters",adjIO_.nkGlobalPCIters);
+    adjOptions.add("ASMOverlap",adjIO_.nkASMOverlap);
+    adjOptions.add("LocalPCIters",adjIO_.nkLocalPCIters);
+    adjOptions.add("JacMatReOrdering",adjIO_.nkJacMatReOrdering);
+    adjOptions.add("PCFillLevel",adjIO_.nkPCFillLevel);
+    adjOptions.add("GMRESMaxIters",adjIO_.nkGMRESMaxIters);
+    adjOptions.add("GMRESRelTol",adjIO_.adjGMRESRelTol);
+    adjOptions.add("GMRESAbsTol",adjIO_.adjGMRESAbsTol);
+    adjOptions.add("printInfo",1);
+    //Info<<adjOptions<<endl;
+    adjDev_.createMLRKSP(&ksp,dRdWReduced_,dRdWReduced_,adjOptions);
+
+    Vec RHS,deltaWVecReduced, deltaWVec;
+
+    label nInstances = timeSamples.size();
+    VecCreate(PETSC_COMM_WORLD,&RHS);
+    VecSetSizes(RHS,PETSC_DECIDE,nInstances);
+    VecSetFromOptions(RHS);
+    VecDuplicate(RHS,&deltaWVecReduced);
+
+    VecZeroEntries(deltaWVecReduced);
+ 
+    label localSize = adjIdx_.nLocalAdjointStates;
+    VecCreate(PETSC_COMM_WORLD,&deltaWVec);
+    VecSetSizes(deltaWVec,localSize,PETSC_DECIDE);
+    VecSetFromOptions(deltaWVec);
+
+    MatMult(dRdFFDReduced_,deltaFFDVec_,RHS);
+    VecScale(RHS,-1.0);
+
+    KSPSolve(ksp,RHS, deltaWVecReduced);
+    //Print convergence information
+    label its;
+    KSPGetIterationNumber(ksp,&its);
+    PetscScalar finalResNorm;
+    KSPGetResidualNorm(ksp,&finalResNorm);
+    PetscPrintf
+    (
+        PETSC_COMM_WORLD,
+        "Main iteration %D KSP Residual norm %14.12e %d s \n",
+        its,
+        finalResNorm,
+        runTime_.elapsedClockTime()
+    );
+    PetscPrintf(PETSC_COMM_WORLD,"Total iterations %D\n",its);
+
+    MatMult(svdPhiMat_,deltaWVecReduced,deltaWVec);
+
+    //adjIO_.writeVectorASCII(deltaWVecReduced,"deltaWVecReduced");
+    //adjIO_.writeVectorASCII(deltaWVec,"deltaWVec");
+
+    this->setNewField(deltaWVec);
+
+}
 
 // end of namespace Foam
 }

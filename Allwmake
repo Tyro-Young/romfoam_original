@@ -22,3 +22,6 @@ cd ../../
 
 cd ./solvers/offlineROM
 makeSolvers
+
+cd ../onlineROM
+makeSolvers

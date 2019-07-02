@@ -76,12 +76,8 @@ protected:
     /// A temp dict to store all the ROM parameters and print them to screen later 
     IOdictionary romParameters_; 
 
-    Mat AMat_,BMat_,phiMat_;
-    Vec uVec_,vVec_,sigmaVec_;
-    SVD svd_;
-
-    Mat dRdW_,dRdFFD_;
-
+    Mat snapshotMat_,dRdW_,dRdFFD_,svdPhiMat_, dRdWReduced_, dRdFFDReduced_;
+    Vec uVec_,vVec_,deltaFFDVec_;
 
 public:
 
@@ -106,14 +102,23 @@ public:
     virtual ~ReducedOrderModeling();
 
     labelList timeSamples;
+    scalarList deltaFFD;
 
-    void initializeMats();
-    void initializeVecs();
-    void initialize();
-
+    void initializeSnapshotMat();
+    void initializedRdFFDMat();
+    void initializeSVDPhiMat();
+    void initializedRdWMatReduced();
+    void initializedRdFFDMatReduced();
+    
+    void initializeOffline();
+    void solveOffline();
     void setSnapshotMat();
 
-    void solve();
+
+    void initializeOnline();
+    void solveOnline();
+
+    void setNewField(Vec deltaWVec);
 
     /// read an option from dict and add them to romParameters_
     template<class type>

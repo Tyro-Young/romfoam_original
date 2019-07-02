@@ -22,14 +22,14 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Application
-    offlineROM
+    onlineROM
 
 Description
 
 
 \*---------------------------------------------------------------------------*/
 
-static char help[] = "Offline ROM stage \n\n";
+static char help[] = "Online ROM stage \n\n";
 
 #include <slepcsvd.h>
 #include "fvCFD.H"
@@ -59,9 +59,8 @@ int main(int argc, char *argv[])
     SlepcInitialize(&argc,&argv,(char*)0,help);
 
     #include "createFields.H"
-
-    rom.initializeOffline();
-    rom.solveOffline();
+    rom.initializeOnline();
+    rom.solveOnline();
 
     SlepcFinalize();
  

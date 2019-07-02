@@ -25,13 +25,15 @@ from pyoptsparse import Optimization, OPT
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", help='Output directory', type=str,default='../optOutput/')
 parser.add_argument("--opt", help="optimizer to use", type=str, default='slsqp')
-parser.add_argument("--task", help="type of run to do", type=str, default='opt')
-parser.add_argument('--optVars',type=str,help='Vars for the optimizer',default="['shape']")
+parser.add_argument("--task", help="type of run to do", type=str, default='run')
+parser.add_argument('--optVars',type=str,help='Vars for the optimizer',default="['rampAngle']")
 args = parser.parse_args()
 exec('optVars=%s'%args.optVars)
 task = args.task
 outputDirectory = args.output
 gcomm = MPI.COMM_WORLD
+
+rampAngle0=17.0
 
 # Set the parameters for optimization
 aeroOptions = {
@@ -39,6 +41,7 @@ aeroOptions = {
     'casename':                 'AhmedBody_'+task+'_'+optVars[0],
     'outputdirectory':          outputDirectory,
     'writesolution':            True,
+    'usecoloring':              True,
 
 
     # design surfaces and cost functions 
@@ -55,8 +58,8 @@ aeroOptions = {
     'adjointsolver':           'simpleDAFoam',
     'rasmodel':                'SpalartAllmarasFv3',
     'flowcondition':           'Incompressible',
-    'maxflowiters':            1500, 
-    'writeinterval':           1500,
+    'maxflowiters':            500, 
+    'writeinterval':           500,
     'setflowbcs':              True,  
     'inletpatches':            ['inlet'],
     'outletpatches':           ['outlet'],
@@ -82,12 +85,12 @@ aeroOptions = {
     'stateresettol':           1e-3,
     'adjdvtypes':              ['FFD'], 
     'epsderiv':                1.0e-6, 
-    'epsderivffd':             1.0e-4,
+    'epsderivffd':             1.0e-3,
     'adjpcfilllevel':          0, 
-    'adjjacmatordering':       'cell',
-    'adjjacmatreordering':     'natural',
-    'normalizestates':         ['U','p','phi','k','omega','nuTilda','epsilon'],
-    'normalizeresiduals':      ['URes','pRes','phiRes','kRes','omegaRes','nuTildaRes','epsilonRes'],
+    'adjjacmatordering':       'state',
+    'adjjacmatreordering':     'rcm',
+    'normalizestates':         [],
+    'normalizeresiduals':      [],
     'maxresconlv4jacpcmat':    {'URes':2,'pRes':2,'phiRes':1,'nuTildaRes':2,'kRes':2,'omegaRes':2,'epsilonRes':2},
     'statescaling':            {'UScaling':20.0,
                                 'pScaling':200.0,
@@ -99,7 +102,7 @@ aeroOptions = {
     
     
     ########## misc setup ##########
-    'mpispawnrun':             False,
+    'mpispawnrun':             True,
     'restartopt':              False,
 
 }
@@ -154,13 +157,43 @@ z = [0.194,0.194,0.194,0.147]
 c1 = pySpline.Curve(x=x, y=y, z=z, k=2)
 DVGeo.addRefAxis('bodyAxis', curve = c1,axis='z')
 
-# Select points
-iVol=2 # the FFD plot3d file has three blocks, iVol=2 is for the Ahmed body ramp
-pts=DVGeo.getLocalIndex(iVol) 
-indexList=pts[1:,:,-1].flatten()  # select the top layer FFD starts with i=1
-PS=geo_utils.PointSelect('list',indexList)
-DVGeo.addGeoDVLocal('shapez',lower=-0.1, upper=0.1,axis='z',scale=1.0,pointSelect=PS)
+def rampAngle(val,geo):
 
+    C = geo.extractCoef('bodyAxis')
+    
+    # the value will be ramp angle in degree.
+    # start with a conversion to rads
+    angle = (val[0])*np.pi/180.0
+    
+    # Overall length needs to stay a 1.044, so use that as a ref for
+    # the final mesh point
+    
+    # set the target length
+    lTarget = 0.222
+    hInit = 0.246 - 0.05  
+
+    # compute the coefficient deltas
+    dx = lTarget*np.cos(angle)
+    dz = lTarget*np.sin(angle)
+
+    topEdge = 0.338-dz
+    rearHeight = topEdge-0.05
+    coefPoint = rearHeight/2.0 +0.05
+    scalez = rearHeight/hInit
+
+    # Set the coefficients
+    C[3,0] = 1.044
+    C[2,0] = C[3,0]-dx
+    C[2,2] = 0.194
+    C[3,2] = coefPoint
+
+    geo.restoreCoef(C, 'bodyAxis')
+
+    geo.scale_z['bodyAxis'].coef[3] = scalez
+
+    return
+
+DVGeo.addGeoDVGlobal('rampAngle', rampAngle0, rampAngle,lower=5.0, upper=50.0, scale=1.0)
 
 # =================================================================================================
 # DAFoam
@@ -191,15 +224,6 @@ surf = [p0, v1, v2]
 DVCon.setSurface(surf)
 #DVCon.writeSurfaceTecplot('trisurface.dat') 
 
-#Create a linear constraint so that the curvature at the symmetry plane is zero
-pts1=DVGeo.getLocalIndex(iVol)
-indSetA = [] 
-indSetB = []
-for i in xrange(1,pts1.shape[0],1): # select the top layer FFD starts with i=1
-    indSetA.append(pts1[i,0,-1])
-    indSetB.append(pts1[i,1,-1])
-DVCon.addLinearConstraintsShape(indSetA,indSetB,factorA=1.0,factorB=-1.0,lower=0.0,upper=0.0)
-    
 
 # =================================================================================================
 # optFuncs
@@ -235,11 +259,25 @@ if task.lower()=='opt':
 
 elif task.lower() == 'run':
 
-    optFuncs.run()
+    xDV = DVGeo.getValues()
 
-elif task.lower() == 'plotsensmap':
+    # Evaluate the functions
+    funcs = {}
+    funcs,fail = optFuncs.aeroFuncs(xDV)
 
-    optFuncs.plotSensMap(runAdjoint=True)
+    if gcomm.rank == 0:
+        print funcs
+    
+    # Evaluate the sensitivities
+    #funcsSens = {}
+    #funcsSens,fail = optFuncs.aeroFuncsSens(xDV,funcs)
+    
+    #if gcomm.rank == 0:
+    #    print funcsSens
+
+elif task.lower() == 'writedeltavolmat':
+
+    CFDSolver._writeDeltaVolPointMat()
 
 elif task.lower() == 'testsensuin':
 

@@ -18,7 +18,7 @@ FoamFile
 flowOptions
 {
     flowCondition          Incompressible;
-    setFlowBCs             false;
+    setFlowBCs             true;
     flowBCs                { useWallFunction true; bc4 {patch inlet; variable epsilon; value (2.16);} bc5 {patch inlet; variable nuTilda; value (0.00015);} bc6 {patch inlet; variable T; value (300.0);} bc0 {patch inlet; variable U; value (20.0 0.0 0.0);} bc1 {patch outlet; variable p; value (0.0);} bc2 {patch inlet; variable k; value (0.06);} bc3 {patch inlet; variable omega; value (400.0);} }
     inletPatches           (inlet);
     outletPatches          (outlet);
@@ -51,9 +51,9 @@ adjointOptions
 {
     solveAdjoint           true;
     useColoring            true;
-    normalizeResiduals     (URes pRes phiRes kRes omegaRes nuTildaRes epsilonRes);
-    normalizeStates        (U p phi k omega nuTilda epsilon);
-    nFFDPoints             25;
+    normalizeResiduals     ();
+    normalizeStates        ();
+    nFFDPoints             1;
     correctWallDist        true;
     reduceResCon4JacMat    false;
     calcPCMat              true;
@@ -63,8 +63,8 @@ adjointOptions
     adjGMRESMaxIters       500;
     adjGMRESRestart        500;
     adjASMOverlap          1;
-    adjJacMatOrdering      cell;
-    adjJacMatReOrdering    natural;
+    adjJacMatOrdering      state;
+    adjJacMatReOrdering    rcm;
     adjGlobalPCIters       0;
     adjLocalPCIters        1;
     adjPCFillLevel         0;
@@ -77,7 +77,7 @@ adjointOptions
     stateResetTol          1.000000e-03;
     tractionBCMaxIter      20;
     epsDeriv               1.000000e-06;
-    epsDerivFFD            1.000000e-04;
+    epsDerivFFD            1.000000e-03;
     epsDerivXv             1.000000e-07;
     epsDerivUIn            1.000000e-05;
     epsDerivVis            1.000000e-08;

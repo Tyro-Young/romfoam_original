@@ -24,13 +24,13 @@ libs
 );
 
 application     simpleDAFoam;
-startFrom       latestTime;
-startTime       0;
+startFrom       startTime;
+startTime       15;
 stopAt          endTime;
-endTime         1500;
+endTime         500;
 deltaT          1;
 writeControl    timeStep;
-writeInterval   1500;
+writeInterval   500;
 purgeWrite      0;
 writeFormat     ascii;
 writePrecision  16;
