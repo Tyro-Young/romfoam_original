@@ -208,6 +208,7 @@ if task.lower() == 'run':
 elif task.lower() == 'write':
 
     CFDSolver.updateVolumePoints()
+    CFDSolver.writeUpdatedVolumePoints()
     CFDSolver._writeDeltaVolPointMat()
 
 elif task.lower() == 'xdv2xv':

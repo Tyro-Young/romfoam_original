@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Clean pyOptFoam solvers
+# Clean OF_ROM
 
 cd src/ReducedOrderModeling
 wclean
 rm Make/options
 cd ../../
 
-cd ./solvers/offlineROM
+cd ./solvers/simpleFoamOfflineROM
 wclean
 rm Make/options
 
-cd ../onlineROM
+cd ../simpleFoamOnlineROM
 wclean
 rm Make/options
 

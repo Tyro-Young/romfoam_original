@@ -24,8 +24,8 @@ makeSolvers
 cd ../../
 
 
-cd ./solvers/offlineROM
+cd ./solvers/simpleFoamOfflineROM
 makeSolvers
 
-cd ../onlineROM
+cd ../simpleFoamOnlineROM
 makeSolvers

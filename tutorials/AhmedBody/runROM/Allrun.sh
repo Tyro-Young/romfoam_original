@@ -1,7 +1,7 @@
 #!/bin/bash
 
 p=1
-angles="5 10 15 20 25"
+angles="10 15 20"
 
 # pre-processing
 blockMesh
@@ -34,5 +34,5 @@ cp system/controlDict.bk system/controlDict
 
 cp -r ../sample15/500 . 
 
-offlineROM
-onlineROM
+simpleFoamOfflineROM
+simpleFoamOnlineROM

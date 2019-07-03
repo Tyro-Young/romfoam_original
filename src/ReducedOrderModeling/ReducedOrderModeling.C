@@ -239,103 +239,120 @@ void ReducedOrderModeling::setSnapshotMat()
         word varDir = "../"+sampleDirPrefix+name(sampleList[idxI])+"/"+name(sampleRunEndTime);
         Info<< "Adding variables from " <<varDir<< endl;
 
-        volVectorField U
-        (
-            IOobject
+        forAll(adjReg_.volVectorStates,idxJ)                                           
+        {        
+            const word stateName = adjReg_.volVectorStates[idxJ];                      
+            volVectorField state
             (
-                "U",
-                varDir,
-                mesh_,
-                IOobject::MUST_READ,
-                IOobject::NO_WRITE
-            ),
-            mesh_
-        );
-        
-        forAll(U,cellI)
-        {
-            for(label i=0;i<3;i++)
+                IOobject
+                (
+                    stateName,
+                    varDir,
+                    mesh_,
+                    IOobject::MUST_READ,
+                    IOobject::NO_WRITE
+                ),
+                mesh_
+            );
+
+            forAll(state,cellI)
             {
-                PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex("U",cellI,i);
+                for(label i=0;i<3;i++)
+                {
+                    PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex(stateName,cellI,i);
+                    PetscInt colI = idxI;
+                    PetscScalar val = state[cellI][i];
+                    MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+                }
+            }                                                           
+        }
+    
+        forAll(adjReg_.volScalarStates,idxJ)
+        {
+            const word stateName = adjReg_.volScalarStates[idxJ];                      
+            volScalarField state
+            (
+                IOobject
+                (
+                    stateName,
+                    varDir,
+                    mesh_,
+                    IOobject::MUST_READ,
+                    IOobject::NO_WRITE
+                ),
+                mesh_
+            );
+
+            forAll(state,cellI)
+            {
+                PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex(stateName,cellI);
                 PetscInt colI = idxI;
-                PetscScalar val = U[cellI][i];
+                PetscScalar val = state[cellI];
+                MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+            }          
+        }
+    
+        // perturb turbStates
+        forAll(adjRAS_.turbStates,idxJ)
+        {
+            const word stateName = adjRAS_.turbStates[idxJ];                      
+            volScalarField state
+            (
+                IOobject
+                (
+                    stateName,
+                    varDir,
+                    mesh_,
+                    IOobject::MUST_READ,
+                    IOobject::NO_WRITE
+                ),
+                mesh_
+            );
+
+            forAll(state,cellI)
+            {
+                PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex(stateName,cellI);
+                PetscInt colI = idxI;
+                PetscScalar val = state[cellI];
+                MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+            }          
+    
+        }
+        // perturb surfaceScalarStates
+        forAll(adjReg_.surfaceScalarStates,idxJ)
+        {
+            const word stateName = adjReg_.surfaceScalarStates[idxJ];                      
+            surfaceScalarField state
+            (
+                IOobject
+                (
+                    stateName,
+                    varDir,
+                    mesh_,
+                    IOobject::MUST_READ,
+                    IOobject::NO_WRITE
+                ),
+                mesh_
+            );
+
+            forAll(mesh_.faces(), faceI)
+            {
+                PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex(stateName,faceI);
+                PetscInt colI = idxI;
+                PetscScalar val;
+                if (faceI < adjIdx_.nLocalInternalFaces)
+                {
+                    val = state[faceI];
+                }
+                else
+                {
+                    label relIdx=faceI-adjIdx_.nLocalInternalFaces;
+                    label patchIdx=adjIdx_.bFacePatchI[relIdx];
+                    label faceIdx=adjIdx_.bFaceFaceI[relIdx];
+                    val = state.boundaryField()[patchIdx][faceIdx];
+                } 
                 MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
             }
-        }
-
-        volScalarField p
-        (
-            IOobject
-            (
-                "p",
-                varDir,
-                mesh_,
-                IOobject::MUST_READ,
-                IOobject::NO_WRITE
-            ),
-            mesh_
-        );
-
-        forAll(p,cellI)
-        {
-            PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex("p",cellI);
-            PetscInt colI = idxI;
-            PetscScalar val = p[cellI];
-            MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
-        }
-
-        surfaceScalarField phi
-        (
-            IOobject
-            (
-                "phi",
-                varDir,
-                mesh_,
-                IOobject::MUST_READ,
-                IOobject::NO_WRITE
-            ),
-            mesh_
-        );
-
-        forAll(mesh_.faces(), faceI)
-        {
-            PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex("phi",faceI);
-            PetscInt colI = idxI;
-            PetscScalar val;
-            if (faceI < adjIdx_.nLocalInternalFaces)
-            {
-                val = phi[faceI];
-            }
-            else
-            {
-                label relIdx=faceI-adjIdx_.nLocalInternalFaces;
-                label patchIdx=adjIdx_.bFacePatchI[relIdx];
-                label faceIdx=adjIdx_.bFaceFaceI[relIdx];
-                val = phi.boundaryField()[patchIdx][faceIdx];
-            } 
-            MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
-  
-        }
-
-        volScalarField nuTilda
-        (
-            IOobject
-            (
-                "nuTilda",
-                varDir,
-                mesh_,
-                IOobject::MUST_READ,
-                IOobject::NO_WRITE
-            ),
-            mesh_
-        );
-
-        forAll(nuTilda,cellI)
-        {
-            PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex("nuTilda",cellI);
-            PetscInt colI = idxI;
-            PetscScalar val = nuTilda[cellI];
-            MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
         }
 
     }

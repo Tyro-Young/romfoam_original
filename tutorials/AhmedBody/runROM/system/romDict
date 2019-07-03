@@ -16,12 +16,12 @@ FoamFile
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 sampleDirPrefix sample;
 sampleRunEndTime 500;
-sampleList (5 10 15 20 25);
+sampleList (10 15 20);
 deltaFFD    (5);
 svdType  cross;
 svdTol  1e-8;
 svdMaxIts 100;
-svdRequestedN 5;
+svdRequestedN 3;
 useMF  1;
 mfStep 1e-6;
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
