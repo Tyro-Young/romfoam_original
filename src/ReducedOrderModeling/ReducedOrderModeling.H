@@ -107,6 +107,8 @@ public:
     scalar svdTol;
     label svdMaxIts;
     label svdRequestedN;
+    label useMF;
+    scalar mfStep;
 
     void initializeSnapshotMat();
     void initializedRdFFDMat();
@@ -117,6 +119,9 @@ public:
     void initializeOffline();
     void solveOffline();
     void setSnapshotMat();
+    void calcReducedMatsMF();
+    void perturbStatesMF(label n);
+    void setdRdWPhiMat(Mat matIn,label n);
 
 
     void initializeOnline();

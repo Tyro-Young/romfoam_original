@@ -64,6 +64,8 @@ int main(int argc, char *argv[])
     rom.solveOffline();
 
     SlepcFinalize();
+
+    Info<<"Slepc finalized"<<endl;
  
     return 0;
 }

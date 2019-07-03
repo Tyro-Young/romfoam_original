@@ -89,6 +89,8 @@ ReducedOrderModeling::ReducedOrderModeling
     svdTol                    = readOptionOrDefault<scalar>(romDict_,"svdTol",1e-8);
     svdMaxIts                 = readOptionOrDefault<label>(romDict_,"svdMaxIts",100);
     svdRequestedN             = readOptionOrDefault<label>(romDict_,"svdRequestedN",1);
+    useMF                     = readOptionOrDefault<label>(romDict_,"useMF",1);
+    mfStep                    = readOptionOrDefault<scalar>(romDict_,"mfStep",1e-8);
 
     // print all the parameters to screen    
     Info<<"ROM Parameters"<<romParameters_<<endl;
@@ -383,7 +385,7 @@ void ReducedOrderModeling::solveOffline()
 
     SVDSetTolerances(svd,svdTol,svdMaxIts);
     SVDSetDimensions(svd,svdRequestedN,2*svdRequestedN,PETSC_DEFAULT);
-    
+    SVDSetImplicitTranspose(svd,PETSC_TRUE);
 
     SVDSolve(svd);
 
@@ -402,7 +404,7 @@ void ReducedOrderModeling::solveOffline()
 
     // Display singular values and relative errors
     PetscPrintf(PETSC_COMM_WORLD,
-     "          sigma         \n"
+     "     Singular Values    \n"
      "  --------------------- \n");
     for (label i=0;i<nconv;i++) 
     {
@@ -422,6 +424,7 @@ void ReducedOrderModeling::solveOffline()
     MatAssemblyBegin(svdPhiMat_,MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(svdPhiMat_,MAT_FINAL_ASSEMBLY);
 
+    Info<<"Writing the phiMat"<<endl;
     label nProcs = Pstream::nProcs();
     std::ostringstream np("");
     np<<nProcs;
@@ -435,91 +438,286 @@ void ReducedOrderModeling::solveOffline()
 
     Info<<"Calculating dRdW and dRdFFD at time = "<<runTime_.timeName()<<endl;
 
-    //******************************** Compute dRdW *****************************//
-    // compute preallocation vecs for dRdW 
-    adjCon_.setupdRdWCon(1);
-    adjCon_.initializedRdWCon();
-    adjCon_.setupdRdWCon(0);
-    // Read in the precomputed coloring
-    adjCon_.readdRdWColoring();
     
-    label transposed=0,isPC=0;
-    adjDev_.initializedRdW(&dRdW_,transposed);
-
-    std::string fNamedRdW="dRdW_"+np.str();
-    std::string fNamedRdWBin="dRdW_"+np.str()+".bin";
-    std::ifstream fIn(fNamedRdWBin);
-    if(fIn.fail()) 
+    if(useMF) // matrix free
     {
-        Info<<"Calculating dRdW... "<<endl;
-        adjDev_.calcdRdW(dRdW_,transposed,isPC);
-        adjIO_.writeMatrixBinary(dRdW_,fNamedRdW);
+        this->calcReducedMatsMF();
     }
     else
     {
-        Info<<"Reading dRdW... "<<endl;
-        // read 
-        PetscViewer viewer;
-        PetscViewerBinaryOpen(PETSC_COMM_WORLD,fNamedRdWBin.c_str(),FILE_MODE_READ,&viewer);
-        MatLoad(dRdW_,viewer);
-        MatAssemblyBegin(dRdW_,MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(dRdW_,MAT_FINAL_ASSEMBLY);
-        PetscViewerDestroy(&viewer);
+        //******************************** Compute dRdW *****************************//
+        // compute preallocation vecs for dRdW 
+        adjCon_.setupdRdWCon(1);
+        adjCon_.initializedRdWCon();
+        adjCon_.setupdRdWCon(0);
+        // Read in the precomputed coloring
+        adjCon_.readdRdWColoring();
+        
+        label transposed=0,isPC=0;
+        adjDev_.initializedRdW(&dRdW_,transposed);
+    
+        std::string fNamedRdW="dRdW_"+np.str();
+        std::string fNamedRdWBin="dRdW_"+np.str()+".bin";
+        std::ifstream fIn(fNamedRdWBin);
+        if(fIn.fail()) 
+        {
+            Info<<"Calculating dRdW... "<<endl;
+            adjDev_.calcdRdW(dRdW_,transposed,isPC);
+            adjIO_.writeMatrixBinary(dRdW_,fNamedRdW);
+        }
+        else
+        {
+            Info<<"Reading dRdW... "<<endl;
+            // read 
+            PetscViewer viewer;
+            PetscViewerBinaryOpen(PETSC_COMM_WORLD,fNamedRdWBin.c_str(),FILE_MODE_READ,&viewer);
+            MatLoad(dRdW_,viewer);
+            MatAssemblyBegin(dRdW_,MAT_FINAL_ASSEMBLY);
+            MatAssemblyEnd(dRdW_,MAT_FINAL_ASSEMBLY);
+            PetscViewerDestroy(&viewer);
+        }
+    
+        adjCon_.deletedRdWCon();
+    
+        //******************************** Compute dRdWReduced *****************************//
+        Mat dRdWsvdPhiMat;    
+        Info<< "Computing phiT*dRdW*phi" << endl;
+        // now compute the matmat mult
+        MatMatMult(dRdW_,svdPhiMat_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWsvdPhiMat);
+        MatTransposeMatMult(svdPhiMat_,dRdWsvdPhiMat,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
+    
+        MatDestroy(&dRdW_);
+    
+        this->initializedRdFFDMat();
+        
+        std::string fNamedRdFFD="dRdFFD_"+np.str();
+        std::string fNamedRdFFDBin="dRdFFD_"+np.str()+".bin";
+        std::ifstream fIn1(fNamedRdFFDBin);
+        if(fIn1.fail()) 
+        {
+            Info<<"Calculating dRdFFD... "<<endl;
+            adjDev_.calcdRdFFD(dRdFFD_);
+            adjIO_.writeMatrixBinary(dRdFFD_,fNamedRdFFD);
+        }
+        else
+        {
+            Info<<"Reading dRdFFD... "<<endl;
+            // read 
+            PetscViewer viewer;
+            PetscViewerBinaryOpen(PETSC_COMM_WORLD,fNamedRdFFDBin.c_str(),FILE_MODE_READ,&viewer);
+            MatLoad(dRdFFD_,viewer);
+            MatAssemblyBegin(dRdFFD_,MAT_FINAL_ASSEMBLY);
+            MatAssemblyEnd(dRdFFD_,MAT_FINAL_ASSEMBLY);
+            PetscViewerDestroy(&viewer);
+        }
+        
+        //******************************** Compute Br *****************************//
+        Info<< "Computing phiT*dRdFFD" << endl;
+        this->initializedRdFFDMatReduced();
+        MatTransposeMatMult(svdPhiMat_,dRdFFD_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdFFDReduced_);
     }
 
-    adjCon_.deletedRdWCon();
-
-    //******************************** Compute dRdWReduced *****************************//
-    Mat svdPhiMatT,dRdWsvdPhiMat;
-
-    Info<< "Transposing Phi to PhiT" << endl;
-    MatTranspose(svdPhiMat_,MAT_INITIAL_MATRIX,&svdPhiMatT);
-    MatAssemblyBegin(svdPhiMatT,MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(svdPhiMatT,MAT_FINAL_ASSEMBLY);
-
-    Info<< "Computing svdPhiT*dRdW*svdPhi" << endl;
-    this->initializedRdWMatReduced();
-    MatMatMult(dRdW_,svdPhiMat_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWsvdPhiMat);
-    MatMatMult(svdPhiMatT,dRdWsvdPhiMat,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
+    Info<<"Writing the reduced matrices...."<<endl;
 
     std::string fNamedRdWReduced="dRdWReduced_"+np.str();
     adjIO_.writeMatrixBinary(dRdWReduced_,fNamedRdWReduced);
     adjIO_.writeMatrixASCII(dRdWReduced_,fNamedRdWReduced);
 
-    MatDestroy(&dRdW_);
-
-    this->initializedRdFFDMat();
-    
-    std::string fNamedRdFFD="dRdFFD_"+np.str();
-    std::string fNamedRdFFDBin="dRdFFD_"+np.str()+".bin";
-    std::ifstream fIn1(fNamedRdFFDBin);
-    if(fIn1.fail()) 
-    {
-        Info<<"Calculating dRdW... "<<endl;
-        adjDev_.calcdRdFFD(dRdFFD_);
-        adjIO_.writeMatrixBinary(dRdFFD_,fNamedRdFFD);
-    }
-    else
-    {
-        Info<<"Reading dRdFFD... "<<endl;
-        // read 
-        PetscViewer viewer;
-        PetscViewerBinaryOpen(PETSC_COMM_WORLD,fNamedRdFFDBin.c_str(),FILE_MODE_READ,&viewer);
-        MatLoad(dRdFFD_,viewer);
-        MatAssemblyBegin(dRdFFD_,MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(dRdFFD_,MAT_FINAL_ASSEMBLY);
-        PetscViewerDestroy(&viewer);
-    }
-    
-
-    //******************************** Compute Br *****************************//
-    Info<< "Computing svdPhiT*dRdFFD" << endl;
-    this->initializedRdFFDMatReduced();
-    MatMatMult(svdPhiMatT,dRdFFD_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdFFDReduced_);
-
     std::string fNamedRdFFDReduced="dRdFFDReduced_"+np.str();
     adjIO_.writeMatrixBinary(dRdFFDReduced_,fNamedRdFFDReduced);
     adjIO_.writeMatrixASCII(dRdFFDReduced_,fNamedRdFFDReduced);
+
+    Info<<"Writing the reduced matrices.... Done!"<<endl;
+
+}
+
+void ReducedOrderModeling::perturbStatesMF(label n)
+{
+    // now we need to perturb eps*v to w, where v is the nth column of the phi matrix
+
+    // first extract v: the nth column of the phiMat
+    Vec colVec;
+    label localSize = adjIdx_.nLocalAdjointStates;
+    VecCreate(PETSC_COMM_WORLD,&colVec);
+    VecSetSizes(colVec,localSize,PETSC_DECIDE);
+    VecSetFromOptions(colVec);
+    VecZeroEntries(colVec);
+    MatGetColumnVector(svdPhiMat_,colVec,n);
+
+    PetscScalar *colVecArray;
+    VecGetArray(colVec,&colVecArray);
+
+    // perturb volVectorStates, modified based on perturbStates in adjDev
+    const objectRegistry& db_(mesh_.thisDb());
+    forAll(adjReg_.volVectorStates,idxI)                                           
+    {        
+        // create state and stateRef
+        makeState(volVectorStates,volVectorField,adjReg_); 
+        makeStateRef(volVectorStates,volVectorField,adjReg_);                 
+                                                                               
+        forAll(mesh_.cells(),cellI)                                            
+        {                                                                      
+            // check if this state's color = coloI
+            for(label i=0;i<3;i++)                                         
+            {
+                PetscInt local = adjIdx_.getLocalAdjointStateIndex(stateName,cellI,i);
+                scalar val = colVecArray[local];
+                state[cellI][i] = stateRef[cellI][i] + mfStep*val;                    
+            }                                                                  
+        } 
+        // correct BC
+        state.correctBoundaryConditions();                                                                    
+    }
+
+    // perturb volScalarStates
+    forAll(adjReg_.volScalarStates,idxI)
+    {
+        // create state and stateRef
+        makeState(volScalarStates,volScalarField,adjReg_);
+        makeStateRef(volScalarStates,volScalarField,adjReg_);
+        
+        forAll(mesh_.cells(),cellI)
+        {         
+            PetscInt local = adjIdx_.getLocalAdjointStateIndex(stateName,cellI);
+            scalar val = colVecArray[local];
+            state[cellI] = stateRef[cellI] + mfStep*val;    
+        }
+        
+        // correct BC
+        state.correctBoundaryConditions();  
+    }
+
+    // perturb turbStates
+    forAll(adjRAS_.turbStates,idxI)
+    {
+        // create state and stateRef
+        makeState(turbStates,volScalarField,adjRAS_);
+        makeStateRef(turbStates,volScalarField,adjRAS_);
+        
+        forAll(mesh_.cells(),cellI)
+        {         
+            PetscInt local = adjIdx_.getLocalAdjointStateIndex(stateName,cellI);
+            scalar val = colVecArray[local];
+            state[cellI] = stateRef[cellI] + mfStep*val;    
+        }
+
+    }
+    // BC for turbStates are implemented in the AdjRAS class
+    adjRAS_.correctTurbBoundaryConditions();
+
+    // perturb surfaceScalarStates
+    forAll(adjReg_.surfaceScalarStates,idxI)
+    {
+        // create state and stateRef
+        makeState(surfaceScalarStates,surfaceScalarField,adjReg_);
+        makeStateRef(surfaceScalarStates,surfaceScalarField,adjReg_);
+        
+        forAll(mesh_.faces(),faceI)
+        {
+            // check if this state's color = coloI
+            PetscInt local = adjIdx_.getLocalAdjointStateIndex(stateName,faceI);
+            scalar val = colVecArray[local]; 
+            if (faceI < adjIdx_.nLocalInternalFaces)
+            {
+                state[faceI] = stateRef[faceI] + mfStep*val;   
+            }
+            else
+            {
+                label relIdx=faceI-adjIdx_.nLocalInternalFaces;
+                label patchIdx=adjIdx_.bFacePatchI[relIdx];
+                label faceIdx=adjIdx_.bFaceFaceI[relIdx];
+                state.boundaryFieldRef()[patchIdx][faceIdx] = 
+                    stateRef.boundaryField()[patchIdx][faceIdx] + mfStep*val;   
+            }           
+        }
+    }
+
+    // NOTE: we also need to update states that are related to the adjoint states but not
+    // perturbed here. For example, in buoyantBoussinesqFoam, p is related to p_rgh;
+    // however, we only perturb p_rgh in this function. To calculate the perturbed
+    // p due to the p_rgh perturbation for calculating force, we need to do p=p_rgh+rhok*gh
+    // Similar treatment is needed for rhok and alphat. Basically, any variables apprear in flow residual
+    // calculation or objection function calculation that are not state variables need to be updated.
+    // This function is implemented in child class
+    adjDev_.updateIntermediateVariables();
+
+
+    VecRestoreArray(colVec,&colVecArray);
+
+    return;
+}
+
+void ReducedOrderModeling::setdRdWPhiMat(Mat matIn,label n)
+{
+    PetscInt    Istart, Iend;
+    // get the local ownership range
+    MatGetOwnershipRange(matIn,&Istart,&Iend);
+
+    for(PetscInt j=Istart; j<Iend; j++)
+    {
+        label localIdx = adjIdx_.globalAdjointStateNumbering.toLocal(j);
+        PetscScalar val = adjDev_.adjStateLocalIdx2PartDerivVal(localIdx);
+        MatSetValues(matIn,1,&j,1,&n,&val,INSERT_VALUES);
+    }
+}
+
+void ReducedOrderModeling::calcReducedMatsMF()
+{
+
+    // ********************** Ar *********************
+    // first compute dRdW*phi
+    Info<<"Computing dRdW*Phi..."<<endl;
+    Mat dRdWPhi;
+    label localSize = adjIdx_.nLocalAdjointStates;
+    label nInstances = timeSamples.size();
+    MatCreate(PETSC_COMM_WORLD,&dRdWPhi);
+    MatSetSizes(dRdWPhi,localSize,PETSC_DECIDE,PETSC_DETERMINE,nInstances);
+    MatSetFromOptions(dRdWPhi);
+    MatMPIAIJSetPreallocation(dRdWPhi,nInstances,NULL,nInstances,NULL);
+    MatSeqAIJSetPreallocation(dRdWPhi,nInstances,NULL);
+    MatSetUp(dRdWPhi);
+
+    // do matrix-free for dRdW*Phi = [ R(w+v*mfSetp) - R(w) ] / mfStep
+    label isRef=1, isPC=0;
+    adjDev_.copyStates("Ref2Var");
+    adjDev_.calcResiduals(isRef,isPC);
+    adjRAS_.calcTurbResiduals(isRef,isPC);
+    for(label nn=0;nn<nInstances;nn++)
+    {
+        this->perturbStatesMF(nn);
+
+        adjDev_.calcResPartDeriv(mfStep,isPC);
+
+        // reset perturbation
+        adjDev_.copyStates("Ref2Var");
+
+        this->setdRdWPhiMat(dRdWPhi,nn);
+
+    }
+
+    MatAssemblyBegin(dRdWPhi,MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(dRdWPhi,MAT_FINAL_ASSEMBLY);
+
+    adjDev_.calcFlowResidualStatistics("verify");
+
+    // now compute phiT*dRdW*Phi
+    //Mat phiT;
+    //MatCreateTranspose(svdPhiMat_,&phiT);
+    void initializedRdWMatReduced();
+    Info<< "Computing phiT*dRdW*phi" << endl;
+    MatTransposeMatMult(svdPhiMat_,dRdWPhi,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
+
+    // ********************** Br *********************
+    Info<<"Calculating dRdFFD... "<<endl;
+    this->initializedRdFFDMat();
+    adjDev_.calcdRdFFD(dRdFFD_);
+    Info<< "Computing phiT*dRdFFD" << endl;
+    void initializedRdFFDMatReduced();
+    MatTransposeMatMult(svdPhiMat_,dRdFFD_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdFFDReduced_);
+
+    MatDestroy(&dRdFFD_);
+    
+    return;
 
 }
 

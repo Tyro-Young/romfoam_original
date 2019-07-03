@@ -63,6 +63,8 @@ int main(int argc, char *argv[])
     rom.solveOnline();
 
     SlepcFinalize();
+
+    Info<<"Slepc finalized"<<endl;
  
     return 0;
 }
