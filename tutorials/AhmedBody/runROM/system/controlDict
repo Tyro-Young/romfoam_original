@@ -24,8 +24,8 @@ libs
 );
 
 application     simpleDAFoam;
-startFrom       startTime;
-startTime       15;
+startFrom       latestTime;
+startTime       0;
 stopAt          endTime;
 endTime         500;
 deltaT          1;

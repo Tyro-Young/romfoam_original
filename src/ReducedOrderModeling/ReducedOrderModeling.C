@@ -83,7 +83,9 @@ ReducedOrderModeling::ReducedOrderModeling
 {
 
     // read
-    timeSamples               = readOptionOrDefault<labelList>(romDict_,"timeSamples",{});
+    sampleDirPrefix           = readOptionOrDefault<word>(romDict_,"sampleDirPrefix","./");
+    sampleRunEndTime          = readOptionOrDefault<label>(romDict_,"sampleRunEndTime",0);
+    sampleList                = readOptionOrDefault<labelList>(romDict_,"sampleList",{});
     deltaFFD                  = readOptionOrDefault<scalarList>(romDict_,"deltaFFD",{});
     svdType                   = readOptionOrDefault<word>(romDict_,"svdType","cross");
     svdTol                    = readOptionOrDefault<scalar>(romDict_,"svdTol",1e-8);
@@ -94,6 +96,10 @@ ReducedOrderModeling::ReducedOrderModeling
 
     // print all the parameters to screen    
     Info<<"ROM Parameters"<<romParameters_<<endl;
+
+    nInstances_=sampleList.size();
+    localSize_=adjIdx_.nLocalAdjointStates;
+    nFFDs_=adjIO_.nFFDPoints;
 
 }
 
@@ -126,9 +132,8 @@ void ReducedOrderModeling::initializeOnline()
     adjIO_.readMatrixBinary(dRdFFDReduced_,fNamedRdFFDReduced);
     adjIO_.readMatrixBinary(svdPhiMat_,fNamePhi);
     
-    label nFFDs= adjIO_.nFFDPoints;
     VecCreate(PETSC_COMM_WORLD,&deltaFFDVec_);
-    VecSetSizes(deltaFFDVec_,PETSC_DECIDE,nFFDs);
+    VecSetSizes(deltaFFDVec_,PETSC_DECIDE,nFFDs_);
     VecSetFromOptions(deltaFFDVec_);
 
     label Istart,Iend;
@@ -149,14 +154,12 @@ void ReducedOrderModeling::initializeSnapshotMat()
 {
     Info<<"Initializing the Snapshot matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
     // now initialize the memory for the jacobian itself
-    label localSize = adjIdx_.nLocalAdjointStates;
-    label nInstances = timeSamples.size();
     // create snapshotMat_
     MatCreate(PETSC_COMM_WORLD,&snapshotMat_);
-    MatSetSizes(snapshotMat_,localSize,PETSC_DECIDE,PETSC_DETERMINE,nInstances);
+    MatSetSizes(snapshotMat_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nInstances_);
     MatSetFromOptions(snapshotMat_);
-    MatMPIAIJSetPreallocation(snapshotMat_,nInstances,NULL,nInstances,NULL);
-    MatSeqAIJSetPreallocation(snapshotMat_,nInstances,NULL);
+    MatMPIAIJSetPreallocation(snapshotMat_,nInstances_,NULL,nInstances_,NULL);
+    MatSeqAIJSetPreallocation(snapshotMat_,nInstances_,NULL);
     MatSetUp(snapshotMat_);
     Info<<"Snapshot matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
@@ -168,9 +171,8 @@ void ReducedOrderModeling::initializedRdFFDMat()
     //******************************** Compute dRdFFD *****************************//
     Info<<"Initializing the dRdFFD matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
     // create dRdFFD_
-    label localSize = adjIdx_.nLocalAdjointStates;
     MatCreate(PETSC_COMM_WORLD,&dRdFFD_);
-    MatSetSizes(dRdFFD_,localSize,PETSC_DECIDE,PETSC_DETERMINE,adjIO_.nFFDPoints);
+    MatSetSizes(dRdFFD_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,adjIO_.nFFDPoints);
     MatSetFromOptions(dRdFFD_);
     MatMPIAIJSetPreallocation(dRdFFD_,adjIO_.nFFDPoints,NULL,adjIO_.nFFDPoints,NULL);
     MatSeqAIJSetPreallocation(dRdFFD_,adjIO_.nFFDPoints,NULL);
@@ -184,13 +186,11 @@ void ReducedOrderModeling::initializeSVDPhiMat()
 {
     Info<<"Initializing the Phi matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
     // create svdPhiMat_
-    label localSize = adjIdx_.nLocalAdjointStates;
-    label nInstances = timeSamples.size();
     MatCreate(PETSC_COMM_WORLD,&svdPhiMat_);
-    MatSetSizes(svdPhiMat_,localSize,PETSC_DECIDE,PETSC_DETERMINE,nInstances);
+    MatSetSizes(svdPhiMat_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nInstances_);
     MatSetFromOptions(svdPhiMat_);
-    MatMPIAIJSetPreallocation(svdPhiMat_,nInstances,NULL,nInstances,NULL);
-    MatSeqAIJSetPreallocation(svdPhiMat_,nInstances,NULL);
+    MatMPIAIJSetPreallocation(svdPhiMat_,nInstances_,NULL,nInstances_,NULL);
+    MatSeqAIJSetPreallocation(svdPhiMat_,nInstances_,NULL);
     MatSetOption(svdPhiMat_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
     MatSetUp(svdPhiMat_);
     Info<<"Phi matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
@@ -201,12 +201,11 @@ void ReducedOrderModeling::initializeSVDPhiMat()
 void ReducedOrderModeling::initializedRdWMatReduced()
 {
     Info<<"Initializing dRdWReduced matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
-    label nInstances = timeSamples.size();
     MatCreate(PETSC_COMM_WORLD,&dRdWReduced_);
-    MatSetSizes(dRdWReduced_,PETSC_DECIDE,PETSC_DECIDE,nInstances,nInstances);
+    MatSetSizes(dRdWReduced_,PETSC_DECIDE,PETSC_DECIDE,nInstances_,nInstances_);
     MatSetFromOptions(dRdWReduced_);
-    MatMPIAIJSetPreallocation(dRdWReduced_,nInstances,NULL,nInstances,NULL);
-    MatSeqAIJSetPreallocation(dRdWReduced_,nInstances,NULL);
+    MatMPIAIJSetPreallocation(dRdWReduced_,nInstances_,NULL,nInstances_,NULL);
+    MatSeqAIJSetPreallocation(dRdWReduced_,nInstances_,NULL);
     MatSetOption(dRdWReduced_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
     MatSetUp(dRdWReduced_);
 
@@ -218,13 +217,11 @@ void ReducedOrderModeling::initializedRdWMatReduced()
 void ReducedOrderModeling::initializedRdFFDMatReduced()
 {
     Info<<"Initializing the dRdFFDReduced matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
-    label nFFDs= adjIO_.nFFDPoints;
-    label nInstances = timeSamples.size();
     MatCreate(PETSC_COMM_WORLD,&dRdFFDReduced_);
-    MatSetSizes(dRdFFDReduced_,PETSC_DECIDE,PETSC_DECIDE,nInstances,nFFDs);
+    MatSetSizes(dRdFFDReduced_,PETSC_DECIDE,PETSC_DECIDE,nInstances_,nFFDs_);
     MatSetFromOptions(dRdFFDReduced_);
-    MatMPIAIJSetPreallocation(dRdFFDReduced_,nFFDs,NULL,nFFDs,NULL);
-    MatSeqAIJSetPreallocation(dRdFFDReduced_,nFFDs,NULL);
+    MatMPIAIJSetPreallocation(dRdFFDReduced_,nFFDs_,NULL,nFFDs_,NULL);
+    MatSeqAIJSetPreallocation(dRdFFDReduced_,nFFDs_,NULL);
     MatSetOption(dRdFFDReduced_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
     MatSetUp(dRdFFDReduced_);
 
@@ -237,16 +234,17 @@ void ReducedOrderModeling::setSnapshotMat()
 {
     Info<<"Setting the snapshot matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
-    forAll(timeSamples,idxI)
+    forAll(sampleList,idxI)
     {
-        Info<< "Adding variables for time = " << name(timeSamples[idxI]) << endl;
+        word varDir = "../"+sampleDirPrefix+name(sampleList[idxI])+"/"+name(sampleRunEndTime);
+        Info<< "Adding variables from " <<varDir<< endl;
 
         volVectorField U
         (
             IOobject
             (
                 "U",
-                name(timeSamples[idxI]),
+                varDir,
                 mesh_,
                 IOobject::MUST_READ,
                 IOobject::NO_WRITE
@@ -270,7 +268,7 @@ void ReducedOrderModeling::setSnapshotMat()
             IOobject
             (
                 "p",
-                name(timeSamples[idxI]),
+                varDir,
                 mesh_,
                 IOobject::MUST_READ,
                 IOobject::NO_WRITE
@@ -291,7 +289,7 @@ void ReducedOrderModeling::setSnapshotMat()
             IOobject
             (
                 "phi",
-                name(timeSamples[idxI]),
+                varDir,
                 mesh_,
                 IOobject::MUST_READ,
                 IOobject::NO_WRITE
@@ -324,7 +322,7 @@ void ReducedOrderModeling::setSnapshotMat()
             IOobject
             (
                 "nuTilda",
-                name(timeSamples[idxI]),
+                varDir,
                 mesh_,
                 IOobject::MUST_READ,
                 IOobject::NO_WRITE
@@ -537,9 +535,8 @@ void ReducedOrderModeling::perturbStatesMF(label n)
 
     // first extract v: the nth column of the phiMat
     Vec colVec;
-    label localSize = adjIdx_.nLocalAdjointStates;
     VecCreate(PETSC_COMM_WORLD,&colVec);
-    VecSetSizes(colVec,localSize,PETSC_DECIDE);
+    VecSetSizes(colVec,localSize_,PETSC_DECIDE);
     VecSetFromOptions(colVec);
     VecZeroEntries(colVec);
     MatGetColumnVector(svdPhiMat_,colVec,n);
@@ -668,13 +665,11 @@ void ReducedOrderModeling::calcReducedMatsMF()
     // first compute dRdW*phi
     Info<<"Computing dRdW*Phi..."<<endl;
     Mat dRdWPhi;
-    label localSize = adjIdx_.nLocalAdjointStates;
-    label nInstances = timeSamples.size();
     MatCreate(PETSC_COMM_WORLD,&dRdWPhi);
-    MatSetSizes(dRdWPhi,localSize,PETSC_DECIDE,PETSC_DETERMINE,nInstances);
+    MatSetSizes(dRdWPhi,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nInstances_);
     MatSetFromOptions(dRdWPhi);
-    MatMPIAIJSetPreallocation(dRdWPhi,nInstances,NULL,nInstances,NULL);
-    MatSeqAIJSetPreallocation(dRdWPhi,nInstances,NULL);
+    MatMPIAIJSetPreallocation(dRdWPhi,nInstances_,NULL,nInstances_,NULL);
+    MatSeqAIJSetPreallocation(dRdWPhi,nInstances_,NULL);
     MatSetUp(dRdWPhi);
 
     // do matrix-free for dRdW*Phi = [ R(w+v*mfSetp) - R(w) ] / mfStep
@@ -682,7 +677,7 @@ void ReducedOrderModeling::calcReducedMatsMF()
     adjDev_.copyStates("Ref2Var");
     adjDev_.calcResiduals(isRef,isPC);
     adjRAS_.calcTurbResiduals(isRef,isPC);
-    for(label nn=0;nn<nInstances;nn++)
+    for(label nn=0;nn<nInstances_;nn++)
     {
         this->perturbStatesMF(nn);
 
@@ -868,17 +863,15 @@ void ReducedOrderModeling::solveOnline()
 
     Vec RHS,deltaWVecReduced, deltaWVec;
 
-    label nInstances = timeSamples.size();
     VecCreate(PETSC_COMM_WORLD,&RHS);
-    VecSetSizes(RHS,PETSC_DECIDE,nInstances);
+    VecSetSizes(RHS,PETSC_DECIDE,nInstances_);
     VecSetFromOptions(RHS);
     VecDuplicate(RHS,&deltaWVecReduced);
 
     VecZeroEntries(deltaWVecReduced);
  
-    label localSize = adjIdx_.nLocalAdjointStates;
     VecCreate(PETSC_COMM_WORLD,&deltaWVec);
-    VecSetSizes(deltaWVec,localSize,PETSC_DECIDE);
+    VecSetSizes(deltaWVec,localSize_,PETSC_DECIDE);
     VecSetFromOptions(deltaWVec);
 
     MatMult(dRdFFDReduced_,deltaFFDVec_,RHS);

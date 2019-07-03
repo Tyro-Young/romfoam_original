@@ -16,24 +16,24 @@ from dafoam import *
 from pygeo import *
 from pyspline import *
 from idwarp import *
-from pyoptsparse import Optimization, OPT
 
 
 # =============================================================================
 # Input Parameters
 # =============================================================================
 parser = argparse.ArgumentParser()
-parser.add_argument("--output", help='Output directory', type=str,default='../optOutput/')
+parser.add_argument("--output", help='Output directory', type=str,default='./')
 parser.add_argument("--opt", help="optimizer to use", type=str, default='slsqp')
 parser.add_argument("--task", help="type of run to do", type=str, default='run')
 parser.add_argument('--optVars',type=str,help='Vars for the optimizer',default="['rampAngle']")
+parser.add_argument('--angle',type=float,help='ramp angle in degree',default=15.0)
 args = parser.parse_args()
 exec('optVars=%s'%args.optVars)
 task = args.task
 outputDirectory = args.output
 gcomm = MPI.COMM_WORLD
 
-rampAngle0=15.0
+rampAngle0=args.angle
 
 # Set the parameters for optimization
 aeroOptions = {
@@ -41,7 +41,7 @@ aeroOptions = {
     'casename':                 'AhmedBody_'+task+'_'+optVars[0],
     'outputdirectory':          outputDirectory,
     'writesolution':            True,
-    'usecoloring':              True,
+    'usecoloring':              False,
 
 
     # design surfaces and cost functions 
@@ -49,10 +49,7 @@ aeroOptions = {
     'designsurfaces':          ['body'], 
     'objfuncs':                ['CD'],
     'objfuncgeoinfo':          [['body']],
-    'referencevalues':         {'magURef':20.0,'ARef':0.056016,'LRef':1.0,'pRef':0.0,'rhoRef':1.0},
-    'liftdir':                 [0.0,0.0,1.0],
-    'dragdir':                 [1.0,0.0,0.0],
-
+    'referencevalues':         {'magURef':20.0,'ARef':0.056016,'rhoRef':1.0,'pRef':0.0,'LRef':1.0},
 
     # flow setup
     'adjointsolver':           'simpleDAFoam',
@@ -69,7 +66,6 @@ aeroOptions = {
                                 'bc3':{'patch':'inlet','variable':'omega','value':[400.0]},
                                 'bc4':{'patch':'inlet','variable':'epsilon','value':[2.16]},
                                 'bc5':{'patch':'inlet','variable':'nuTilda','value':[1.5e-4]},
-                                'bc6':{'patch':'inlet','variable':'T','value':[300.0]},
                                 'useWallFunction':'true'},                
     'transproperties':         {'nu':1.5E-5,
                                 'TRef':300.0,
@@ -77,32 +73,16 @@ aeroOptions = {
                                 'Pr':0.7,
                                 'Prt':0.85}, 
 
-
     # adjoint setup
-    'adjgmresmaxiters':        500,
-    'adjgmresrestart':         500,
-    'adjgmresreltol':          1e-6,
-    'stateresettol':           1e-3,
     'adjdvtypes':              ['FFD'], 
-    'epsderiv':                1.0e-6, 
     'epsderivffd':             1.0e-3,
-    'adjpcfilllevel':          0, 
     'adjjacmatordering':       'state',
     'adjjacmatreordering':     'rcm',
     'normalizestates':         [],
-    'normalizeresiduals':      [],
-    'maxresconlv4jacpcmat':    {'URes':2,'pRes':2,'phiRes':1,'nuTildaRes':2,'kRes':2,'omegaRes':2,'epsilonRes':2},
-    'statescaling':            {'UScaling':20.0,
-                                'pScaling':200.0,
-                                'phiScaling':1.0,
-                                'nuTildaScaling':1.5e-4,
-                                'kScaling':0.06,
-                                'epsilonScaling':2.16,
-                                'omegaScaling':400.0},
-    
+    'normalizeresiduals':      [],    
     
     ########## misc setup ##########
-    'mpispawnrun':             True,
+    'mpispawnrun':             False,
     'restartopt':              False,
 
 }
@@ -114,37 +94,6 @@ meshOptions = {
     # point and normal for the symmetry plane
     'symmetryPlanes':          [[[0.,0., 0.],[0., 1., 0.]]], 
 }
-
-# options for optimizers
-outPrefix = outputDirectory+task+optVars[0]
-if args.opt == 'snopt':
-    optOptions = {
-        'Major feasibility tolerance':  1.0e-7,   # tolerance for constraint
-        'Major optimality tolerance':   1.0e-7,   # tolerance for gradient 
-        'Minor feasibility tolerance':  1.0e-7,   # tolerance for constraint
-        'Verify level':                 -1,
-        'Function precision':           1.0e-7,
-        'Nonderivative linesearch':     None, 
-        'Print file':                   os.path.join(outPrefix+'_SNOPT_print.out'),
-        'Summary file':                 os.path.join(outPrefix+'_SNOPT_summary.out')
-    }
-elif args.opt == 'psqp':
-    optOptions = {
-        'TOLG':                         1.0e-7,   # tolerance for gradient 
-        'TOLC':                         1.0e-7,   # tolerance for constraint
-        'MIT':                          25,       # max optimization iterations
-        'IFILE':                        os.path.join(outPrefix+'_PSQP.out')
-    }
-elif args.opt == 'slsqp':
-    optOptions = {
-        'ACC':                          1.0e-7,   # convergence accuracy
-        'MAXIT':                        25,       # max optimization iterations
-        'IFILE':                        os.path.join(outPrefix+'_SLSQP.out')
-    }
-else:
-    print("opt arg not valid!")
-    exit(0)
-
 
 # =================================================================================================
 # DVGeo
@@ -238,26 +187,7 @@ optFuncs.gcomm = gcomm
 # =================================================================================================
 # Task
 # =================================================================================================
-if task.lower()=='opt':
-    optProb = Optimization('opt', optFuncs.aeroFuncs, comm=gcomm)
-    DVGeo.addVariablesPyOpt(optProb)
-    DVCon.addConstraintsPyOpt(optProb)
-
-    # Add objective
-    optProb.addObj('CD', scale=1)
-    # Add physical constraints
-    #optProb.addCon('CL',lower=0.5,upper=0.5,scale=1)
-
-    if gcomm.rank == 0:
-        print optProb
-
-    opt = OPT(args.opt, options=optOptions)
-    histFile = os.path.join(outputDirectory, '%s_hist.hst'%args.opt)
-    sol = opt(optProb, sens=optFuncs.aeroFuncsSens, storeHistory=histFile)
-    if gcomm.rank == 0:
-        print sol
-
-elif task.lower() == 'run':
+if task.lower() == 'run':
 
     xDV = DVGeo.getValues()
 
@@ -269,23 +199,16 @@ elif task.lower() == 'run':
         print funcs
     
     # Evaluate the sensitivities
-    funcsSens = {}
-    funcsSens,fail = optFuncs.aeroFuncsSens(xDV,funcs)
+    #funcsSens = {}
+    #funcsSens,fail = optFuncs.aeroFuncsSens(xDV,funcs)
     
-    if gcomm.rank == 0:
-        print funcsSens
+    #if gcomm.rank == 0:
+    #    print funcsSens
 
-elif task.lower() == 'writedeltavolmat':
+elif task.lower() == 'write':
 
+    CFDSolver.updateVolumePoints()
     CFDSolver._writeDeltaVolPointMat()
-
-elif task.lower() == 'testsensuin':
-
-    optFuncs.testSensUIn(normStatesList=[True],deltaUList=[1e-8])
-        
-elif task.lower() == 'testsensshape':
-
-    optFuncs.testSensShape(normStatesList=[True],deltaUList=[1e-7],deltaXList=[1e-4])
 
 elif task.lower() == 'xdv2xv':
 

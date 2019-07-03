@@ -14,7 +14,14 @@ FoamFile
     object      adjointDict;
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-timeSamples (13 15 17);
-deltaFFD    (2);
+sampleDirPrefix sample;
+sampleRunEndTime 500;
+sampleList (5 10 15 20 25);
+deltaFFD    (5);
+svdType  cross;
+svdTol  1e-8;
+svdMaxIts 100;
+svdRequestedN 5;
+useMF  1;
+mfStep 1e-6;
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

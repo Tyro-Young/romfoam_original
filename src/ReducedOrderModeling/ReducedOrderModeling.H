@@ -79,6 +79,10 @@ protected:
     Mat snapshotMat_,dRdW_,dRdFFD_,svdPhiMat_, dRdWReduced_, dRdFFDReduced_;
     Vec uVec_,vVec_,deltaFFDVec_;
 
+    label nInstances_;
+    label nFFDs_;
+    label localSize_;
+
 public:
 
     // Constructors
@@ -101,7 +105,9 @@ public:
     //- Destructor
     virtual ~ReducedOrderModeling();
 
-    labelList timeSamples;
+    word sampleDirPrefix;
+    label sampleRunEndTime;
+    labelList sampleList;
     scalarList deltaFFD;
     word svdType;
     scalar svdTol;
