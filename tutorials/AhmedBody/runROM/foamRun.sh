@@ -1,12 +1,13 @@
 #!/bin/bash
 
 ########## user input ##########
-nProcs=$1
-exec=mpirun
+exec=$1
+nProcs=$2
+solver=$3
 ########## user input ##########
 
 pFlag='-parallel'
-if [ $1 -eq 1 ]; then
+if [ $2 -eq 1 ]; then
   pFlag=' '
 fi
 
@@ -26,7 +27,7 @@ for n in `seq 0 1 1000000`; do
 
   if [ -e "runFlowSolver" ]
   then
-    ${exec} -np $nProcs simpleDAFoam $pFlag > flowLog
+    ${exec} -np $nProcs $solver $pFlag > flowLog
     rm runFlowSolver
     touch jobFinished
   fi

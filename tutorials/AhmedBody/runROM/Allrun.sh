@@ -1,7 +1,12 @@
 #!/bin/bash
 
-p=1
-angles="10 15 20"
+exec=mpirun
+nProcs=2
+solver=simpleDAFoam
+runEndTime=500
+refAngle=15
+angles="10 20 15"
+nSamples=3
 
 # pre-processing
 blockMesh
@@ -9,30 +14,41 @@ surfaceFeatureExtract
 snappyHexMesh -overwrite
 renumberMesh -overwrite
 cp -r 0.orig 0
+sed -i "/numberOfSubdomains/c\numberOfSubdomains $nProcs;" system/decomposeParDict
+decomposePar
 
-
+sampleI=1
 for n in $angles; do
 
-  rm -rf ../sample$n
-  cp -r ../runROM ../sample$n
+  rm -rf ../sample$sampleI
+  cp -r ../runROM ../sample$sampleI
 
-  cd ../sample$n
+  cd ../sample$sampleI
   killall -9 foamRun.sh
-  ./foamRun.sh $p &
+  ./foamRun.sh $exec $nProcs $solver &
   sleep 5
-  mpirun -np $p python runFlow.py --angle $n
+  $exec -np $nProcs python runFlow.py --angle=$n
   killall -9 foamRun.sh
+
+  ((sampleI++))
 
   cd ../runROM
   
 done
 
-python runFlow.py --task=write --angle=15.0
+$exec -np $nProcs python runFlow.py --task=write --angle=$refAngle
 
 cp system/adjointDict.bk system/adjointDict
 cp system/controlDict.bk system/controlDict
 
-cp -r ../sample15/500 . 
+((nProcsM1=nProcs-1))
+for m in `seq 1 1 $nSamples`; do
+  for n in `seq 0 1 $nProcsM1`; do
+    cd processor${n}
+    ln -s ../../sample${m}/processor${n}/$runEndTime $m
+    cd ../
+  done
+done
 
-simpleFoamOfflineROM
-simpleFoamOnlineROM
+$exec -np $nProcs simpleFoamOfflineROM -parallel
+$exec -np $nProcs simpleFoamOnlineROM -parallel
