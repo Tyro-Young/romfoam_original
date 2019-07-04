@@ -745,7 +745,6 @@ void ReducedOrderModeling::setNewField(Vec deltaWVec)
     {
         label relIdx = i-Istart;
         word stateName = adjIdx_.adjStateName4LocalAdjIdx[relIdx];
-        word newStateName = stateName+"ROM";
         scalar cellIFaceI = adjIdx_.cellIFaceI4LocalAdjIdx[relIdx];
         const word& stateType = adjIdx_.adjStateType[stateName];
 
@@ -805,7 +804,11 @@ void ReducedOrderModeling::setNewField(Vec deltaWVec)
     }
     
     VecRestoreArray(deltaWVec,&deltaWArray);
+}
 
+void ReducedOrderModeling::writeNewField()
+{
+    const objectRegistry& db_(mesh_.thisDb());
     // write
     forAll(adjReg_.volVectorStates,idxI)                                           
     {        
@@ -913,6 +916,8 @@ void ReducedOrderModeling::solveOnline()
     //adjIO_.writeVectorASCII(deltaWVec,"deltaWVec");
 
     this->setNewField(deltaWVec);
+    adjObj_.writeObjFuncValues();
+    this->writeNewField();
 
 }
 

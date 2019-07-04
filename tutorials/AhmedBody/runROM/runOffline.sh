@@ -51,4 +51,4 @@ for m in `seq 1 1 $nSamples`; do
 done
 
 $exec -np $nProcs simpleFoamOfflineROM -parallel
-$exec -np $nProcs simpleFoamOnlineROM -parallel
+

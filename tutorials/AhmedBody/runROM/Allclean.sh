@@ -17,7 +17,7 @@ do
             rm -rf processor*
             rm -rf {1..9}*
             killall -9 foamRun.sh
-            rm -rf ../sample*
+            rm -rf ../sample* ../prediction*
             exit
             ;;
         [Nn]* ) exit;;

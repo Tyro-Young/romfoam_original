@@ -131,6 +131,7 @@ public:
     void solveOnline();
 
     void setNewField(Vec deltaWVec);
+    void writeNewField();
 
     /// read an option from dict and add them to romParameters_
     template<class type>
