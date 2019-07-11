@@ -73,8 +73,6 @@ autoPtr<AdjointDerivative> adjDev
     AdjointDerivative::New(mesh,adjIO,adjReg(),adjRAS(),adjIdx,adjCon(),adjObj)
 );
 
-adjDev->calcFlowResidualStatistics("set");
-
 ReducedOrderModeling rom(runTime,mesh,adjIO,adjReg(),adjRAS(),adjIdx,adjCon(),adjObj,adjDev());
 
 

@@ -73,11 +73,6 @@ autoPtr<AdjointDerivative> adjDev
     AdjointDerivative::New(mesh,adjIO,adjReg(),adjRAS(),adjIdx,adjCon(),adjObj)
 );
 
-// save the unperturb residual statistics as reference
-// we will verify against this reference to ensure consistent residuals after perturbing
-// and resetting states
-adjDev->calcFlowResidualStatistics("set");
-
 ReducedOrderModeling rom(runTime,mesh,adjIO,adjReg(),adjRAS(),adjIdx,adjCon(),adjObj,adjDev());
 
 
