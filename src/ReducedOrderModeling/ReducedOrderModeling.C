@@ -109,7 +109,7 @@ void ReducedOrderModeling::initializeOffline()
     // save the unperturb residual statistics as reference
     // we will verify against this reference to ensure consistent residuals after perturbing
     // and resetting states
-    adjDev->calcFlowResidualStatistics("set");
+    adjDev_.calcFlowResidualStatistics("set");
 
     this->initializeSnapshotMat();
 
@@ -372,7 +372,7 @@ void ReducedOrderModeling::solveOffline()
     PetscScalar    tol,sigma,val;
     SVDType        type;
 
-    adjDev->calcFlowResidualStatistics("print");
+    adjDev_.calcFlowResidualStatistics("print");
 
     this->setSnapshotMat();
 
