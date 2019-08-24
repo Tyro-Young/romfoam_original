@@ -251,7 +251,8 @@ void ReducedOrderModeling::setSnapshotMat()
                     varDir,
                     mesh_,
                     IOobject::MUST_READ,
-                    IOobject::NO_WRITE
+                    IOobject::NO_WRITE,
+                    false // not registering the IOobject
                 ),
                 mesh_
             );
@@ -279,7 +280,8 @@ void ReducedOrderModeling::setSnapshotMat()
                     varDir,
                     mesh_,
                     IOobject::MUST_READ,
-                    IOobject::NO_WRITE
+                    IOobject::NO_WRITE,
+                    false // not registering the IOobject
                 ),
                 mesh_
             );
@@ -305,7 +307,8 @@ void ReducedOrderModeling::setSnapshotMat()
                     varDir,
                     mesh_,
                     IOobject::MUST_READ,
-                    IOobject::NO_WRITE
+                    IOobject::NO_WRITE,
+                    false // not registering the IOobject
                 ),
                 mesh_
             );
@@ -331,7 +334,8 @@ void ReducedOrderModeling::setSnapshotMat()
                     varDir,
                     mesh_,
                     IOobject::MUST_READ,
-                    IOobject::NO_WRITE
+                    IOobject::NO_WRITE,
+                    false // not registering the IOobject
                 ),
                 mesh_
             );
@@ -810,6 +814,10 @@ void ReducedOrderModeling::setNewField(Vec deltaWVec)
     }
     
     VecRestoreArray(deltaWVec,&deltaWArray);
+
+    // need to update BCs and intermediate variable
+    adjDev_.updateStateVariableBCs();
+    adjDev_.updateIntermediateVariables();
 }
 
 void ReducedOrderModeling::writeNewField()
@@ -852,6 +860,18 @@ void ReducedOrderModeling::writeNewField()
         state.rename(oldName); 
 
     }
+
+    // write nutROM 
+    volScalarField& nut 
+    (
+        const_cast<volScalarField&>
+        (
+            db_.lookupObject<volScalarField>("nut")
+        )
+    );
+    nut.rename("nutROM");
+    nut.write();
+    nut.rename("nut");
 
     forAll(adjReg_.surfaceScalarStates,idxI)
     {
