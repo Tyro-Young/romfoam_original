@@ -1,25 +1,2 @@
-/*--------------------------------*- C++ -*---------------------------------*\ 
-| ========                 |                                                 | 
-| \      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           | 
-|  \    /   O peration     | Version:  v1812                                 | 
-|   \  /    A nd           | Web:      www.OpenFOAM.com                      | 
-|    \/     M anipulation  |                                                 | 
-\*--------------------------------------------------------------------------*/ 
-FoamFile
-{
-    version     2.0;
-    format      ascii;
-    class       dictionary;
-    location    "system";
-    object      adjointDict;
-}
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-nSamples    3;
-deltaFFD    (5);
-svdType  cross;
-svdTol  1e-8;
-svdMaxIts 100;
-svdRequestedN 3;
-useMF  1;
-mfStep 1e-6;
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+FoamFile{version 2.0;format ascii;class dictionary;location system;object adjointDict;}
+nSamples 3; deltaFFD (-10.0); svdType cross; svdTol 1e-8; svdMaxIts 100; svdRequestedN 3; useMF 0; mfStep 1e-8;

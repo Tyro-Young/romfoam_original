@@ -22,18 +22,49 @@ from idwarp import *
 # Input Parameters
 # =============================================================================
 parser = argparse.ArgumentParser()
-parser.add_argument("--output", help='Output directory', type=str,default='./')
+parser.add_argument("--output", help='Output directory', type=str,default='../output')
 parser.add_argument("--opt", help="optimizer to use", type=str, default='slsqp')
 parser.add_argument("--task", help="type of run to do", type=str, default='run')
 parser.add_argument('--optVars',type=str,help='Vars for the optimizer',default="['rampAngle']")
-parser.add_argument('--angle',type=float,help='ramp angle in degree',default=15.0)
+parser.add_argument('--sample',type=int,help='which sample DV to run',default=1)
+parser.add_argument('--mode',type=str,help='can be either train or predict',default='train')
+parser.add_argument('--nSamples',type=int,help='number of samples',default=1)
 args = parser.parse_args()
 exec('optVars=%s'%args.optVars)
 task = args.task
 outputDirectory = args.output
 gcomm = MPI.COMM_WORLD
 
-rampAngle0=args.angle
+sample=args.sample-1
+
+if gcomm.rank==0:
+    print(sample,optVars)
+
+DVs_Train=[[5.0],[25.0],[15.0]]
+DVs_Predict=[[5.0],[25.0],[15.0]]
+DVs_Train=np.asarray(DVs_Train)
+DVs_Predict=np.asarray(DVs_Predict)
+
+if args.mode=='train':
+    DVs0=DVs_Train[sample]
+elif args.mode=='predict':
+    DVs0=DVs_Predict[sample]
+else:
+    print("mode should be either train or predict")
+    exit(1)
+
+if args.mode=='predict':
+    deltaDVs=DVs_Predict[sample]-DVs_Train[-1]
+    if gcomm.rank==0:
+        f=open('system/romDict','w')
+        f.write('FoamFile{version 2.0;format ascii;class dictionary;location %s;object adjointDict;}\n'%"system")
+        f.write('nSamples %d; deltaFFD (%s); svdType cross; svdTol 1e-8; svdMaxIts 100; svdRequestedN %d; useMF 1; mfStep 1e-6;\n'%(args.nSamples,' '.join(map(str,deltaDVs)),args.nSamples))
+elif args.mode=='train': 
+    if gcomm.rank==0:
+        f=open('system/romDict','w')
+        f.write('FoamFile{version 2.0;format ascii;class dictionary;location %s;object adjointDict;}\n'%"system")
+        f.write('nSamples %d; deltaFFD (1.0); svdType cross; svdTol 1e-8; svdMaxIts 100; svdRequestedN %d; useMF 1; mfStep 1e-6;\n'%(args.nSamples,args.nSamples))
+
 
 # Set the parameters for optimization
 aeroOptions = {
@@ -57,7 +88,9 @@ aeroOptions = {
     'flowcondition':           'Incompressible',
     'maxflowiters':            500, 
     'writeinterval':           500,
-    'setflowbcs':              True,  
+    'avgobjfuncs':             False,
+    'avgobjfuncsstart':        2000,
+    'setflowbcs':              False, 
     'inletpatches':            ['inlet'],
     'outletpatches':           ['outlet'],
     'flowbcs':                 {'bc0':{'patch':'inlet','variable':'U','value':[20.0,0.0,0.0]},
@@ -106,20 +139,22 @@ z = [0.194,0.194,0.194,0.147]
 c1 = pySpline.Curve(x=x, y=y, z=z, k=2)
 DVGeo.addRefAxis('bodyAxis', curve = c1,axis='z')
 
+
+
 def rampAngle(val,geo):
 
     C = geo.extractCoef('bodyAxis')
-    
+
     # the value will be ramp angle in degree.
     # start with a conversion to rads
     angle = (val[0])*np.pi/180.0
-    
+
     # Overall length needs to stay a 1.044, so use that as a ref for
     # the final mesh point
-    
+
     # set the target length
     lTarget = 0.222
-    hInit = 0.246 - 0.05  
+    hInit = 0.246 - 0.05
 
     # compute the coefficient deltas
     dx = lTarget*np.cos(angle)
@@ -142,7 +177,19 @@ def rampAngle(val,geo):
 
     return
 
-DVGeo.addGeoDVGlobal('rampAngle', rampAngle0, rampAngle,lower=5.0, upper=50.0, scale=1.0)
+if 'rampAngle' in optVars:
+    DVGeo.addGeoDVGlobal(optVars[0], 25.0, rampAngle,lower=1.0, upper=50.0, scale=1.0)
+
+
+if 'shape' in optVars:
+    # Select points
+    iVol=2 # iVol=2; ramp of the Ahmed body
+    pts=DVGeo.getLocalIndex(iVol)
+    indexList=pts[1:,:,-1].flatten()  # select the top layer FFD starts with i=1
+    PS=geo_utils.PointSelect('list',indexList)
+    # setup local design variables, lower and upper are the bounds for the FFD points
+    DVGeo.addGeoDVLocal(optVars[0], lower=0.0, upper=0.05, axis='z', scale=1.0, pointSelect=PS)
+
 
 # =================================================================================================
 # DAFoam
@@ -190,6 +237,12 @@ optFuncs.gcomm = gcomm
 if task.lower() == 'run':
 
     xDV = DVGeo.getValues()
+   
+    if isinstance(xDV[optVars[0]],list):
+        for idxI in range(len(xDV[optVars[0]])):
+            xDV[optVars[0]][idxI] = float(DVs0[idxI])
+    else:
+        xDV[optVars[0]] = float(DVs0[0])
 
     # Evaluate the functions
     funcs = {}
@@ -205,11 +258,44 @@ if task.lower() == 'run':
     #if gcomm.rank == 0:
     #    print funcsSens
 
-elif task.lower() == 'write':
+elif task.lower() == 'writedelmat':
 
+    xDV = DVGeo.getValues()
+
+    if isinstance(xDV[optVars[0]],list):
+        for idxI in range(len(xDV[optVars[0]])):
+            xDV[optVars[0]][idxI] = float(DVs0[idxI])
+    else:
+        xDV[optVars[0]] = float(DVs0[0])
+
+
+    if gcomm.rank == 0:
+        print ("write deltaVolPointsMat at sample=%d"%sample)
+        print(xDV)
+
+    DVGeo.setDesignVars(xDV)
     CFDSolver.updateVolumePoints()
     CFDSolver.writeUpdatedVolumePoints()
     CFDSolver._writeDeltaVolPointMat()
+
+elif task.lower() == 'deform':
+
+    xDV = DVGeo.getValues()
+
+    if isinstance(xDV[optVars[0]],list):
+        for idxI in range(len(xDV[optVars[0]])):
+            xDV[optVars[0]][idxI] = float(DVs0[idxI])
+    else:
+        xDV[optVars[0]] = float(DVs0[0])
+
+
+    if gcomm.rank == 0:
+        print ("Deforming at sample=%d"%sample)
+        print(xDV)
+
+    DVGeo.setDesignVars(xDV)
+    CFDSolver.updateVolumePoints()
+    CFDSolver.writeUpdatedVolumePoints()
 
 elif task.lower() == 'xdv2xv':
 
