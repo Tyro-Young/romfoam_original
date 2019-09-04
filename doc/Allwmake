@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+doxygen DoxygenConfig
+ln -s html/index.html OF_ROM_Doc.html 

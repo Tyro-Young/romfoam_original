@@ -76,10 +76,37 @@ protected:
     /// A temp dict to store all the ROM parameters and print them to screen later 
     IOdictionary romParameters_; 
 
-    Mat snapshotMat_,dRdW_,dRdFFD_,svdPhiMat_, dRdWReduced_, dRdFFDReduced_;
-    Vec uVec_,vVec_,deltaFFDVec_;
+    /// snapshot matrix for all state variables
+    Mat snapshotMat_;
+    
+    /// partial R / partial W matrix
+    Mat dRdW_;
+    
+    /// partial R / partial FFD matrix
+    Mat dRdFFD_;
+    
+    /// the left matrix resulted from the SVD computation
+    Mat svdPhiMat_;
+    
+    /// reduced dRdW matrix
+    Mat dRdWReduced_;
+    
+    /// reduced dRdFFD matrix
+    Mat dRdFFDReduced_;
+    
+    /// right vector from SVD
+    Vec uVec_;
+    
+    /// left vector from SVD
+    Vec vVec_;
+    
+    /// vector to store the delta FFD displacement for prediction
+    Vec deltaFFDVec_;
 
+    /// number of FFD points or design variables
     label nFFDs_;
+    
+    /// size of local state variables
     label localSize_;
 
 public:
@@ -104,33 +131,74 @@ public:
     //- Destructor
     virtual ~ReducedOrderModeling();
 
+    // we make these variable public
+    /// number of snapshot samples
     label nSamples;
+
+    /// list of delta FFD displacement for prediction
     scalarList deltaFFD;
+
+    /// type of SVD computation
     word svdType;
+
+    /// SVD convergence tolerance
     scalar svdTol;
+
+    /// SVD max iteration
     label svdMaxIts;
+
+    /// required SVD component
     label svdRequestedN;
+
+    /// whether to use matrix free method for ROM
     label useMF;
+
+    /// finite-difference step size for the matrix free method
     scalar mfStep;
 
+    /// initialize snapshot matrix
     void initializeSnapshotMat();
+
+    /// initialize dRdFFD
     void initializedRdFFDMat();
+
+    /// initialize svdPhiMat
     void initializeSVDPhiMat();
+
+    /// initialize dRdWReduced
     void initializedRdWMatReduced();
+
+    /// initialize dRdFFDReduced
     void initializedRdFFDMatReduced();
     
+    /// initialize offlineROM
     void initializeOffline();
+
+    /// solver offline ROM
     void solveOffline();
+
+    /// assign values for snapshotMat
     void setSnapshotMat();
+
+    /// compute reduced matrices using matrix-free method
     void calcReducedMatsMF();
+
+    /// perturb state variables using matrix-free method
     void perturbStatesMF(label n);
+
+    /// set values for the matrix-matrix product dRdW*Phi 
     void setdRdWPhiMat(Mat matIn,label n);
 
-
+    /// initialize onlineROM
     void initializeOnline();
+
+    /// solve onlineROM
     void solveOnline();
 
+    /// set the new fields (U p nuTilda etc) for ROM
     void setNewField(Vec deltaWVec);
+
+    /// write the new fields as UROM pROM etc.
     void writeNewField();
 
     /// read an option from dict and add them to romParameters_
