@@ -40,6 +40,7 @@ sample=args.sample-1
 if gcomm.rank==0:
     print(sample,optVars)
 
+# NOTE: put the ref angle at the end of this list because we will use startFrom latestTime in system/controlDict 
 DVs_Train=[[5.0],[25.0],[15.0]]
 DVs_Predict=[[5.0],[25.0],[15.0]]
 DVs_Train=np.asarray(DVs_Train)
@@ -108,11 +109,11 @@ aeroOptions = {
 
     # adjoint setup
     'adjdvtypes':              ['FFD'], 
-    'epsderivffd':             1.0e-3,
+    'epsderivffd':             1.0e-4,
     'adjjacmatordering':       'state',
     'adjjacmatreordering':     'rcm',
     'normalizestates':         [],
-    'normalizeresiduals':      [],    
+    'normalizeresiduals':      ['URes','pRes','nuTildaRes'],    
     
     ########## misc setup ##########
     'mpispawnrun':             False,

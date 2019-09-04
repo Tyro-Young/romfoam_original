@@ -35,16 +35,19 @@ for n in `seq 1 1 $nSamples`; do
   cd ../sample$n
   killall -9 foamRun.sh
   ./foamRun.sh $exec $nProcs $solver &
-  sleep 5
+  sleep 3
   $exec -np $nProcs python runFlow.py --task=run --sample=$n --mode=train --nSamples=$nSamples
   killall -9 foamRun.sh
+  sleep 3
 
   cd ../runROM
   
 done
 
 $exec -np $nProcs python runFlow.py --task=writedelmat --sample=$nSamples --mode=train --nSamples=$nSamples
+sleep 3
 $exec -np $nProcs python runFlow.py --task=deform --sample=$nSamples --mode=train --nSamples=$nSamples
+sleep 3
 
 if [ $nProcs -gt 1 ]; then
   ((nProcsM1=nProcs-1))
@@ -66,7 +69,11 @@ sed -i "/useColoring/c\    useColoring           true;" system/adjointDict
 sed -i "/nFFDPoints/c\    nFFDPoints           $nDVs;" system/adjointDict
 sed -i "/startFrom/c\    startFrom       latestTime;" system/controlDict
 
-$exec -np $nProcs simpleFoamOfflineROM -parallel
+if [ $nProcs -eq 1 ]; then
+  simpleFoamOfflineROM
+else
+  $exec -np $nProcs simpleFoamOfflineROM -parallel
+fi
 
 ######################################################
 # runOnline
@@ -74,11 +81,13 @@ $exec -np $nProcs simpleFoamOfflineROM -parallel
 
 # calc refFields
 rm -rf processor*
+rm -rf {1..100}
 killall -9 foamRun.sh
 ./foamRun.sh $exec $nProcs $solver &
-sleep 5
+sleep 3
 $exec -np $nProcs python runFlow.py --task=run --sample=$refSample --mode=train --nSamples=$nSamples
 killall -9 foamRun.sh
+sleep 3
 
 
 for n in $predictSamples; do
@@ -95,13 +104,21 @@ for n in $predictSamples; do
   sed -i "/useColoring/c\useColoring           true;" system/adjointDict
   sed -i "/nFFDPoints/c\    nFFDPoints           $nDVs;" system/adjointDict
   sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
-  $exec -np $nProcs simpleFoamOnlineROM -parallel
+  if [ $nProcs -eq 1 ]; then
+    simpleFoamOnlineROM
+  else
+    $exec -np $nProcs simpleFoamOnlineROM -parallel
+  fi
 
   # now run the flow at the predict sample, overwrite the variable at refSample
   echo "Run the flow at sample = $n"
   sed -i "/startFrom/c\startFrom       startTime;" system/controlDict
   sed -i "/solveAdjoint/c\solveAdjoint           false;" system/adjointDict
-  $exec -np $nProcs $solver -parallel > flowLog_${n}
+  if [ $nProcs -eq 1 ]; then
+    $solver > flowLog_${n}
+  else
+    $exec -np $nProcs $solver -parallel > flowLog_${n}
+  fi
   more objFuncs.dat
 
   cd ../runROM
