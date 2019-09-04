@@ -90,6 +90,7 @@ ReducedOrderModeling::ReducedOrderModeling
     svdMaxIts                 = readOptionOrDefault<label>(romDict_,"svdMaxIts",100);
     svdRequestedN             = readOptionOrDefault<label>(romDict_,"svdRequestedN",1);
     useMF                     = readOptionOrDefault<label>(romDict_,"useMF",1);
+    debugMode                 = readOptionOrDefault<label>(romDict_,"debugMode",0);
     mfStep                    = readOptionOrDefault<scalar>(romDict_,"mfStep",1e-8);
 
     // print all the parameters to screen    
@@ -136,10 +137,11 @@ void ReducedOrderModeling::initializeOnline()
     VecCreate(PETSC_COMM_WORLD,&deltaFFDVec_);
     VecSetSizes(deltaFFDVec_,PETSC_DECIDE,nFFDs_);
     VecSetFromOptions(deltaFFDVec_);
+    VecZeroEntries(deltaFFDVec_);
 
     label Istart,Iend;
     VecGetOwnershipRange(deltaFFDVec_,&Istart,&Iend);
-
+    
     for(label i=Istart;i<Iend;i++)
     {
         scalar val=deltaFFD[i];
@@ -147,7 +149,8 @@ void ReducedOrderModeling::initializeOnline()
     }
     VecAssemblyBegin(deltaFFDVec_);
     VecAssemblyEnd(deltaFFDVec_);
-    
+
+    if(debugMode) adjIO_.writeVectorASCII(deltaFFDVec_,"deltaFFDVec");
 
 }
 
@@ -173,10 +176,10 @@ void ReducedOrderModeling::initializedRdFFDMat()
     Info<<"Initializing the dRdFFD matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
     // create dRdFFD_
     MatCreate(PETSC_COMM_WORLD,&dRdFFD_);
-    MatSetSizes(dRdFFD_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,adjIO_.nFFDPoints);
+    MatSetSizes(dRdFFD_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nFFDs_);
     MatSetFromOptions(dRdFFD_);
-    MatMPIAIJSetPreallocation(dRdFFD_,adjIO_.nFFDPoints,NULL,adjIO_.nFFDPoints,NULL);
-    MatSeqAIJSetPreallocation(dRdFFD_,adjIO_.nFFDPoints,NULL);
+    MatMPIAIJSetPreallocation(dRdFFD_,nFFDs_,NULL,nFFDs_,NULL);
+    MatSeqAIJSetPreallocation(dRdFFD_,nFFDs_,NULL);
     MatSetOption(dRdFFD_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
     MatSetUp(dRdFFD_);
     Info<<"dRdFFD matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
@@ -233,7 +236,12 @@ void ReducedOrderModeling::initializedRdFFDMatReduced()
 
 void ReducedOrderModeling::setSnapshotMat()
 {
+    // NOTE: make sure you copy the snap shot flow fields and rename them to 1, 2, 3, etc.
+    // and put them in the main folder where you run offlineROM
+
     Info<<"Setting the snapshot matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+
+    MatZeroEntries(snapshotMat_);
 
     for(label idxI=0; idxI<nSamples;idxI++)
     {
@@ -295,7 +303,6 @@ void ReducedOrderModeling::setSnapshotMat()
             }          
         }
     
-        // perturb turbStates
         forAll(adjRAS_.turbStates,idxJ)
         {
             const word stateName = adjRAS_.turbStates[idxJ];                      
@@ -322,7 +329,7 @@ void ReducedOrderModeling::setSnapshotMat()
             }          
     
         }
-        // perturb surfaceScalarStates
+
         forAll(adjReg_.surfaceScalarStates,idxJ)
         {
             const word stateName = adjReg_.surfaceScalarStates[idxJ];                      
@@ -365,7 +372,11 @@ void ReducedOrderModeling::setSnapshotMat()
     MatAssemblyBegin(snapshotMat_,MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(snapshotMat_,MAT_FINAL_ASSEMBLY);
 
-    //adjIO_.writeMatrixASCII(snapshotMat_,"snapshotMat");
+    if(debugMode)
+    {
+        adjIO_.writeMatrixASCII(snapshotMat_,"snapshotMat");
+        adjIO_.writeMatrixBinary(snapshotMat_,"snapshotMat");
+    }
 
     Info<<"The snapshot matrix is set. "<<runTime_.elapsedClockTime()<<" s"<<endl;
 }
@@ -380,6 +391,8 @@ void ReducedOrderModeling::solveOffline()
 
     this->setSnapshotMat();
 
+    // vVec has a size same as the colum size of snapshotMat, 
+    // while uVec has a size same as the row size of snapshotMat
     MatCreateVecs(snapshotMat_,&vVec_,&uVec_);
 
     this->initializeSVDPhiMat();
@@ -453,7 +466,7 @@ void ReducedOrderModeling::solveOffline()
     std::string fNamePhi="svdPhiMat_"+np.str();
 
     adjIO_.writeMatrixBinary(svdPhiMat_,fNamePhi);
-    //adjIO_.writeMatrixASCII(svdPhiMat_,"svdPhiMat");
+    if(debugMode) adjIO_.writeMatrixASCII(svdPhiMat_,fNamePhi);
 
     MatDestroy(&snapshotMat_);
     SVDDestroy(&svd);
@@ -502,11 +515,11 @@ void ReducedOrderModeling::solveOffline()
         adjCon_.deletedRdWCon();
     
         //******************************** Compute dRdWReduced *****************************//
-        Mat dRdWsvdPhiMat;    
+        Mat dRdWPhiMat;    
         Info<< "Computing phiT*dRdW*phi" << endl;
         // now compute the matmat mult
-        MatMatMult(dRdW_,svdPhiMat_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWsvdPhiMat);
-        MatTransposeMatMult(svdPhiMat_,dRdWsvdPhiMat,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
+        MatMatMult(dRdW_,svdPhiMat_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWPhiMat);
+        MatTransposeMatMult(svdPhiMat_,dRdWPhiMat,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
     
         MatDestroy(&dRdW_);
     
@@ -543,11 +556,11 @@ void ReducedOrderModeling::solveOffline()
 
     std::string fNamedRdWReduced="dRdWReduced_"+np.str();
     adjIO_.writeMatrixBinary(dRdWReduced_,fNamedRdWReduced);
-    adjIO_.writeMatrixASCII(dRdWReduced_,fNamedRdWReduced);
+    if(debugMode) adjIO_.writeMatrixASCII(dRdWReduced_,fNamedRdWReduced);
 
     std::string fNamedRdFFDReduced="dRdFFDReduced_"+np.str();
     adjIO_.writeMatrixBinary(dRdFFDReduced_,fNamedRdFFDReduced);
-    adjIO_.writeMatrixASCII(dRdFFDReduced_,fNamedRdFFDReduced);
+    if(debugMode) adjIO_.writeMatrixASCII(dRdFFDReduced_,fNamedRdFFDReduced);
 
     Info<<"Writing the reduced matrices.... Done!"<<endl;
 
@@ -695,6 +708,7 @@ void ReducedOrderModeling::calcReducedMatsMF()
     MatMPIAIJSetPreallocation(dRdWPhi,nSamples,NULL,nSamples,NULL);
     MatSeqAIJSetPreallocation(dRdWPhi,nSamples,NULL);
     MatSetUp(dRdWPhi);
+    MatZeroEntries(dRdWPhi);
 
     // do matrix-free for dRdW*Phi = [ R(w+v*mfSetp) - R(w) ] / mfStep
     label isRef=1, isPC=0;
@@ -718,6 +732,12 @@ void ReducedOrderModeling::calcReducedMatsMF()
     MatAssemblyEnd(dRdWPhi,MAT_FINAL_ASSEMBLY);
 
     adjDev_.calcFlowResidualStatistics("verify");
+
+    if(debugMode) 
+    {
+        adjIO_.writeMatrixASCII(dRdWPhi,"dRdWPhi");
+        adjIO_.writeMatrixBinary(dRdWPhi,"dRdWPhi");
+    }
 
     // now compute phiT*dRdW*Phi
     //Mat phiT;
@@ -912,10 +932,12 @@ void ReducedOrderModeling::solveOnline()
     VecDuplicate(RHS,&deltaWVecReduced);
 
     VecZeroEntries(deltaWVecReduced);
+    VecZeroEntries(RHS);
  
     VecCreate(PETSC_COMM_WORLD,&deltaWVec);
     VecSetSizes(deltaWVec,localSize_,PETSC_DECIDE);
     VecSetFromOptions(deltaWVec);
+    VecZeroEntries(deltaWVec);
 
     MatMult(dRdFFDReduced_,deltaFFDVec_,RHS);
     VecScale(RHS,-1.0);
@@ -938,8 +960,11 @@ void ReducedOrderModeling::solveOnline()
 
     MatMult(svdPhiMat_,deltaWVecReduced,deltaWVec);
 
-    //adjIO_.writeVectorASCII(deltaWVecReduced,"deltaWVecReduced");
-    //adjIO_.writeVectorASCII(deltaWVec,"deltaWVec");
+    if(debugMode)
+    {
+        adjIO_.writeVectorASCII(deltaWVecReduced,"deltaWVecReduced");
+        adjIO_.writeVectorASCII(deltaWVec,"deltaWVec");
+    }
 
     this->setNewField(deltaWVec);
     adjObj_.writeObjFuncValues();

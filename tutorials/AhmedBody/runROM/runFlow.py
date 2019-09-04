@@ -58,12 +58,12 @@ if args.mode=='predict':
     if gcomm.rank==0:
         f=open('system/romDict','w')
         f.write('FoamFile{version 2.0;format ascii;class dictionary;location %s;object adjointDict;}\n'%"system")
-        f.write('nSamples %d; deltaFFD (%s); svdType cross; svdTol 1e-8; svdMaxIts 100; svdRequestedN %d; useMF 1; mfStep 1e-6;\n'%(args.nSamples,' '.join(map(str,deltaDVs)),args.nSamples))
+        f.write('nSamples %d; deltaFFD (%s); svdType cross; svdTol 1e-8; svdMaxIts 100; svdRequestedN %d; useMF 1; mfStep 1e-6; debugMode 0;\n'%(args.nSamples,' '.join(map(str,deltaDVs)),args.nSamples))
 elif args.mode=='train': 
     if gcomm.rank==0:
         f=open('system/romDict','w')
         f.write('FoamFile{version 2.0;format ascii;class dictionary;location %s;object adjointDict;}\n'%"system")
-        f.write('nSamples %d; deltaFFD (1.0); svdType cross; svdTol 1e-8; svdMaxIts 100; svdRequestedN %d; useMF 1; mfStep 1e-6;\n'%(args.nSamples,args.nSamples))
+        f.write('nSamples %d; deltaFFD (1.0); svdType cross; svdTol 1e-8; svdMaxIts 100; svdRequestedN %d; useMF 1; mfStep 1e-6; debugMode 0;\n'%(args.nSamples,args.nSamples))
 
 
 # Set the parameters for optimization

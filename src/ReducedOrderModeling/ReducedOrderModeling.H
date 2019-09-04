@@ -94,10 +94,10 @@ protected:
     /// reduced dRdFFD matrix
     Mat dRdFFDReduced_;
     
-    /// right vector from SVD
+    /// left vector for SVD uVec*PhiMat*vVec with size same as the row size for PhiMat
     Vec uVec_;
     
-    /// left vector from SVD
+    /// right vector for SVD, uVec*PhiMat*vVec with size same as the column size for PhiMat
     Vec vVec_;
     
     /// vector to store the delta FFD displacement for prediction
@@ -155,6 +155,9 @@ public:
 
     /// finite-difference step size for the matrix free method
     scalar mfStep;
+
+    /// whether to use the debug mode where we output some vecs and matc
+    label debugMode;
 
     /// initialize snapshot matrix
     void initializeSnapshotMat();

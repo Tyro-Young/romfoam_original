@@ -30,5 +30,5 @@ makeSolvers
 cd ../simpleFoamOnlineROM
 makeSolvers
 
-cd ../../doc
-./Allwmake
+#cd ../../doc
+#./Allwmake
