@@ -1,6 +1,6 @@
 **OF_ROM APIs**
 
-DAFoam directory structure:
+Directory structure:
 - solvers: ROM solvers
 - doc: documentation
 - src: the core ROM libraries
