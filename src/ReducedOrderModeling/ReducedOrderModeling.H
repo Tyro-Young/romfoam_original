@@ -199,10 +199,10 @@ public:
     void solveOnline();
 
     /// set the new fields (U p nuTilda etc) for ROM
-    void setNewField(Vec deltaWVec);
+    void setNewField(Vec deltaWVec,word mode);
 
     /// write the new fields as UROM pROM etc.
-    void writeNewField();
+    void writeNewField(word postfix);
 
     /// read an option from dict and add them to romParameters_
     template<class type>

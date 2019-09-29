@@ -760,16 +760,16 @@ void ReducedOrderModeling::calcReducedMatsMF()
 
 }
 
-void ReducedOrderModeling::setNewField(Vec deltaWVec)
+void ReducedOrderModeling::setNewField(Vec vecIn,word mode)
 {
     const objectRegistry& db_(mesh_.thisDb());
 
     label Istart,Iend;
     label cellI,comp,faceI;
-    VecGetOwnershipRange(deltaWVec,&Istart,&Iend);
+    VecGetOwnershipRange(vecIn,&Istart,&Iend);
 
-    PetscScalar *deltaWArray;
-    VecGetArray(deltaWVec,&deltaWArray);
+    PetscScalar *vecInArray;
+    VecGetArray(vecIn,&vecInArray);
 
     for(label i=Istart;i<Iend;i++)
     {
@@ -790,7 +790,10 @@ void ReducedOrderModeling::setNewField(Vec deltaWVec)
 
             cellI = round(cellIFaceI);
             comp = round(10*(cellIFaceI-cellI));
-            state[cellI][comp] += deltaWArray[relIdx];
+            if (mode=="add") state[cellI][comp] += vecInArray[relIdx];
+            else if (mode=="set") state[cellI][comp] = vecInArray[relIdx];
+            else FatalErrorIn("")<<"stateType not known"<< abort(FatalError);
+            
         }
         else if(stateType == "volScalarState" or stateType == "turbState")
         {
@@ -803,7 +806,9 @@ void ReducedOrderModeling::setNewField(Vec deltaWVec)
             );
 
             cellI = round(cellIFaceI);
-            state[cellI] += deltaWArray[relIdx];
+            if (mode=="add") state[cellI] += vecInArray[relIdx];
+            else if (mode=="set") state[cellI] = vecInArray[relIdx];
+            else FatalErrorIn("")<<"stateType not known"<< abort(FatalError);
         }
         else if(stateType == "surfaceScalarState")
         {
@@ -817,14 +822,18 @@ void ReducedOrderModeling::setNewField(Vec deltaWVec)
             faceI = round(cellIFaceI);
             if(faceI<adjIdx_.nLocalInternalFaces)
             {
-                state[faceI] += deltaWArray[relIdx];
+                if (mode=="add") state[faceI] += vecInArray[relIdx];
+                else if (mode=="set") state[faceI] = vecInArray[relIdx];
+                else FatalErrorIn("")<<"stateType not known"<< abort(FatalError);
             }
             else
             {
                 label relIdx=faceI-adjIdx_.nLocalInternalFaces;
                 label patchIdx=adjIdx_.bFacePatchI[relIdx];
                 label faceIdx=adjIdx_.bFaceFaceI[relIdx];
-                state.boundaryFieldRef()[patchIdx][faceIdx] += deltaWArray[relIdx];
+                if (mode=="add") state.boundaryFieldRef()[patchIdx][faceIdx] += vecInArray[relIdx];
+                else if (mode=="set") state.boundaryFieldRef()[patchIdx][faceIdx] = vecInArray[relIdx];
+                else FatalErrorIn("")<<"stateType not known"<< abort(FatalError);
             }
         }
         else
@@ -833,14 +842,14 @@ void ReducedOrderModeling::setNewField(Vec deltaWVec)
         }
     }
     
-    VecRestoreArray(deltaWVec,&deltaWArray);
+    VecRestoreArray(vecIn,&vecInArray);
 
     // need to update BCs and intermediate variable
     adjDev_.updateStateVariableBCs();
     adjDev_.updateIntermediateVariables();
 }
 
-void ReducedOrderModeling::writeNewField()
+void ReducedOrderModeling::writeNewField(word postfix)
 {
     const objectRegistry& db_(mesh_.thisDb());
     // write
@@ -849,7 +858,7 @@ void ReducedOrderModeling::writeNewField()
         // create state and stateRef
         makeState(volVectorStates,volVectorField,adjReg_); 
         word oldName=state.name();
-        word newName=state.name()+"ROM";
+        word newName=state.name()+postfix;
         state.correctBoundaryConditions();
         state.rename(newName);
         state.write();       
@@ -861,7 +870,7 @@ void ReducedOrderModeling::writeNewField()
         // create state and stateRef
         makeState(volScalarStates,volScalarField,adjReg_);
         word oldName=state.name();
-        word newName=state.name()+"ROM";
+        word newName=state.name()+postfix;
         state.correctBoundaryConditions();
         state.rename(newName);
         state.write();       
@@ -873,7 +882,7 @@ void ReducedOrderModeling::writeNewField()
         // create state and stateRef
         makeState(turbStates,volScalarField,adjRAS_);
         word oldName=state.name();
-        word newName=state.name()+"ROM";
+        word newName=state.name()+postfix;
         state.correctBoundaryConditions();
         state.rename(newName);
         state.write();       
@@ -889,7 +898,7 @@ void ReducedOrderModeling::writeNewField()
             db_.lookupObject<volScalarField>("nut")
         )
     );
-    nut.rename("nutROM");
+    nut.rename("nut"+postfix);
     nut.write();
     nut.rename("nut");
 
@@ -898,7 +907,7 @@ void ReducedOrderModeling::writeNewField()
         // create state and stateRef
         makeState(surfaceScalarStates,surfaceScalarField,adjReg_);
         word oldName=state.name();
-        word newName=state.name()+"ROM";
+        word newName=state.name()+postfix;
         state.rename(newName);
         state.write();       
         state.rename(oldName); 
@@ -966,9 +975,25 @@ void ReducedOrderModeling::solveOnline()
         adjIO_.writeVectorASCII(deltaWVec,"deltaWVec");
     }
 
-    this->setNewField(deltaWVec);
+    this->setNewField(deltaWVec,"add");
     adjObj_.writeObjFuncValues();
-    this->writeNewField();
+    this->writeNewField("ROM");
+
+    // now write the modes based on the phiMat_
+    // extract the nth column of the phiMat
+    Vec colVec;
+    VecCreate(PETSC_COMM_WORLD,&colVec);
+    VecSetSizes(colVec,localSize_,PETSC_DECIDE);
+    VecSetFromOptions(colVec);
+
+    for(label n=0;n<nSamples;n++)
+    {
+        VecZeroEntries(colVec);
+        MatGetColumnVector(svdPhiMat_,colVec,n);
+        this->setNewField(colVec,"set");
+        word fieldPostfix="Mode"+Foam::name(n);
+        this->writeNewField(fieldPostfix);
+    }
 
 }
 
