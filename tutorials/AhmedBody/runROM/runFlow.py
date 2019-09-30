@@ -41,8 +41,8 @@ if gcomm.rank==0:
     print(sample,optVars)
 
 # NOTE: put the ref angle at the end of this list because we will use startFrom latestTime in system/controlDict 
-DVs_Train=[[5.0],[25.0],[15.0]]
-DVs_Predict=[[5.0],[25.0],[15.0]]
+DVs_Train=[[5.0],[10.0],[15.0],[25.0],[20.0]]
+DVs_Predict=[[15.0],[25.0]]
 DVs_Train=np.asarray(DVs_Train)
 DVs_Predict=np.asarray(DVs_Predict)
 

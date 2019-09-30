@@ -4,10 +4,10 @@ exec=mpirun
 nProcs=1
 solver=simpleDAFoam
 runEndTime=500
-nSamples=3
+nSamples=5
 refSample=$nSamples
 nDVs=1
-predictSamples="1 2 3"
+predictSamples="1 2"
 
 ######################################################
 # pre-processing
