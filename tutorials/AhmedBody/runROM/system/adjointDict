@@ -49,11 +49,11 @@ flowOptions
 
 adjointOptions
 {
-    solveAdjoint           true;
-    useColoring            true;
-    normalizeResiduals     ();
+    solveAdjoint           false;
+    useColoring            false;
+    normalizeResiduals     (URes pRes nuTildaRes);
     normalizeStates        ();
-    nFFDPoints             1;
+    nFFDPoints             4;
     correctWallDist        true;
     reduceResCon4JacMat    false;
     calcPCMat              true;

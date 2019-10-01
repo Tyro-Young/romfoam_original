@@ -25,7 +25,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--output", help='Output directory', type=str,default='../output')
 parser.add_argument("--opt", help="optimizer to use", type=str, default='slsqp')
 parser.add_argument("--task", help="type of run to do", type=str, default='run')
-parser.add_argument('--optVars',type=str,help='Vars for the optimizer',default="['rampAngle']")
+parser.add_argument('--optVars',type=str,help='Vars for the optimizer',default="['shape']")
 parser.add_argument('--sample',type=int,help='which sample DV to run',default=1)
 parser.add_argument('--mode',type=str,help='can be either train or predict',default='train')
 parser.add_argument('--nSamples',type=int,help='number of samples',default=1)
@@ -41,8 +41,68 @@ if gcomm.rank==0:
     print(sample,optVars)
 
 # NOTE: put the ref angle at the end of this list because we will use startFrom latestTime in system/controlDict 
-DVs_Train=[[5.0],[10.0],[15.0],[25.0],[20.0]]
-DVs_Predict=[[15.0],[25.0]]
+if optVars[0]=='rampAngle':
+    # 5 samples, 1 DV
+    DVs_Train=   [[5.0],
+                  [10.0],
+                  [15.0],
+                  [25.0],
+                  [20.0]]
+    DVs_Predict= [[15.0],
+                  [25.0]]
+elif optVars[0]=='rideHeight':
+    # 5 samples, 1 DV
+    DVs_Train=   [[0.03],
+                  [0.04],
+                  [0.06],
+                  [0.07],
+                  [0.05]]
+    DVs_Predict= [[0.07],
+                  [0.03]]
+elif optVars[0]=='rampAngleAndRideHeight':
+    # 10 samples, 2 DVs
+    DVs_Train=   [[24.1,0.045],
+                  [25.3,0.049],
+                  [25.7,0.043],
+                  [25.1,0.059],
+                  [25.5,0.055],
+                  [24.5,0.041],
+                  [24.3,0.053],
+                  [24.7,0.057],
+                  [25.9,0.047],
+                  [24.9,0.051]]
+    DVs_Predict= [[25.7,0.043],
+                  [24.1,0.045]]
+
+elif optVars[0]=='shape':
+    # 20 samples, 4 DVs
+    DVs_Train=   [[0.00625,0.04625,0.04875,0.02875],
+                  [0.01625,0.02625,0.04375,0.03375],
+                  [0.03125,0.02125,0.02375,0.01875],
+                  [0.03375,0.01375,0.03625,0.00125],
+                  [0.00125,0.00875,0.02125,0.00375],
+                  [0.04625,0.00625,0.00875,0.01125],
+                  [0.01125,0.03625,0.01125,0.03625],
+                  [0.03875,0.00375,0.04625,0.04375],
+                  [0.02625,0.02375,0.03375,0.04875],
+                  [0.04375,0.03375,0.02625,0.01625],
+                  [0.02125,0.03875,0.01625,0.02375],
+                  [0.04125,0.04375,0.03875,0.03875],
+                  [0.00375,0.04125,0.01875,0.00875],
+                  [0.04875,0.01875,0.03125,0.04625],
+                  [0.02875,0.00125,0.04125,0.04125],
+                  [0.02375,0.04875,0.01375,0.00625],
+                  [0.03625,0.01625,0.00375,0.01375],
+                  [0.01875,0.03125,0.00625,0.03125],
+                  [0.00875,0.01125,0.00125,0.02625],
+                  [0.01375,0.02875,0.02875,0.02125],
+                  [0.00125,0.00875,0.02125,0.00375]]
+    DVs_Predict= [[0.00875,0.01125,0.00125,0.02625],
+                  [0.02125,0.03875,0.01625,0.02375]]
+else:
+    print("optVars not valid")
+    exit(1)
+
 DVs_Train=np.asarray(DVs_Train)
 DVs_Predict=np.asarray(DVs_Predict)
 
@@ -109,7 +169,7 @@ aeroOptions = {
 
     # adjoint setup
     'adjdvtypes':              ['FFD'], 
-    'epsderivffd':             1.0e-4,
+    'epsderivffd':             1.0e-3,
     'adjjacmatordering':       'state',
     'adjjacmatreordering':     'rcm',
     'normalizestates':         [],
@@ -139,7 +199,6 @@ y = [0.100,0.100,0.100,0.100]
 z = [0.194,0.194,0.194,0.147]
 c1 = pySpline.Curve(x=x, y=y, z=z, k=2)
 DVGeo.addRefAxis('bodyAxis', curve = c1,axis='z')
-
 
 
 def rampAngle(val,geo):
@@ -178,15 +237,72 @@ def rampAngle(val,geo):
 
     return
 
-if 'rampAngle' in optVars:
-    DVGeo.addGeoDVGlobal(optVars[0], 25.0, rampAngle,lower=1.0, upper=50.0, scale=1.0)
+def rampAngleAndRideHeight(val,geo):
+    
+    C = geo.extractCoef('bodyAxis')
+
+    # the value will be ramp angle in degree.
+    # start with a conversion to rads
+    angle = (val[0])*np.pi/180.0
+
+    # Overall length needs to stay a 1.044, so use that as a ref for
+    # the final mesh point
+
+    # set the target length
+    lTarget = 0.222
+    hInit = 0.246 - 0.05
+
+    # compute the coefficient deltas
+    dx = lTarget*np.cos(angle)
+    dz = lTarget*np.sin(angle)
+
+    topEdge = 0.338-dz
+    rearHeight = topEdge-0.05
+    coefPoint = rearHeight/2.0 +0.05
+    scalez = rearHeight/hInit
+
+    # Set the coefficients
+    C[3,0] = 1.044
+    C[2,0] = C[3,0]-dx
+    C[2,2] = 0.194
+    C[3,2] = coefPoint
+
+    geo.restoreCoef(C, 'bodyAxis')
+
+    geo.scale_z['bodyAxis'].coef[3] = scalez
+
+    rideHeight=val[1]
+    for i in range(len(C)):
+        if i>=2:
+            C[i,2]=C[i,2]+(rideHeight-0.05)*scalez
+        else:
+            C[i,2]=C[i,2]+rideHeight-0.05
+    geo.restoreCoef(C, 'bodyAxis')
+
+    return
+
+def rideHeight(val,geo):
+
+    C = geo.extractCoef('bodyAxis')
+    rideHeight=val[0]
+    for i in range(len(C)):
+        C[i,2]=C[i,2]+rideHeight-0.05
+    geo.restoreCoef(C, 'bodyAxis')
+
+    return
 
 
-if 'shape' in optVars:
+if optVars[0]=='rampAngle':
+    DVGeo.addGeoDVGlobal(optVars[0], DVs0, rampAngle,lower=1.0, upper=50.0, scale=1.0)
+elif optVars[0]=='rideHeight':
+    DVGeo.addGeoDVGlobal(optVars[0], DVs0, rideHeight,lower=0.0, upper=1.0, scale=1.0)
+elif optVars[0]=='rampAngleAndRideHeight':
+    DVGeo.addGeoDVGlobal(optVars[0], DVs0, rampAngleAndRideHeight,lower=0.0, upper=50.0, scale=1.0)
+elif optVars[0]=='shape':
     # Select points
     iVol=2 # iVol=2; ramp of the Ahmed body
     pts=DVGeo.getLocalIndex(iVol)
-    indexList=pts[1:,:,-1].flatten()  # select the top layer FFD starts with i=1
+    indexList=pts[1:,1:,-1].flatten()  # select the top layer FFD starts with i=1
     PS=geo_utils.PointSelect('list',indexList)
     # setup local design variables, lower and upper are the bounds for the FFD points
     DVGeo.addGeoDVLocal(optVars[0], lower=0.0, upper=0.05, axis='z', scale=1.0, pointSelect=PS)
@@ -238,13 +354,11 @@ optFuncs.gcomm = gcomm
 if task.lower() == 'run':
 
     xDV = DVGeo.getValues()
-   
-    if isinstance(xDV[optVars[0]],list):
+    try:
         for idxI in range(len(xDV[optVars[0]])):
             xDV[optVars[0]][idxI] = float(DVs0[idxI])
-    else:
+    except:
         xDV[optVars[0]] = float(DVs0[0])
-
     # Evaluate the functions
     funcs = {}
     funcs,fail = optFuncs.aeroFuncs(xDV)
@@ -263,10 +377,10 @@ elif task.lower() == 'writedelmat':
 
     xDV = DVGeo.getValues()
 
-    if isinstance(xDV[optVars[0]],list):
+    try:
         for idxI in range(len(xDV[optVars[0]])):
             xDV[optVars[0]][idxI] = float(DVs0[idxI])
-    else:
+    except:
         xDV[optVars[0]] = float(DVs0[0])
 
 
@@ -283,10 +397,10 @@ elif task.lower() == 'deform':
 
     xDV = DVGeo.getValues()
 
-    if isinstance(xDV[optVars[0]],list):
+    try:
         for idxI in range(len(xDV[optVars[0]])):
             xDV[optVars[0]][idxI] = float(DVs0[idxI])
-    else:
+    except:
         xDV[optVars[0]] = float(DVs0[0])
 
 

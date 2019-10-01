@@ -73,9 +73,9 @@ def returnBlockPoints(corners,nx,ny,nz):
 ################ bodyFitted FFD ##############
 nBlocks = 3
 
-nx = [3,12,6]
-ny = [5,5,5]
-nz = [5,5,5]
+nx = [3,12,3]
+ny = [3,3,3]
+nz = [4,4,4]
 
 corners = np.zeros([nBlocks,8,3])
 

@@ -4,9 +4,9 @@ exec=mpirun
 nProcs=1
 solver=simpleDAFoam
 runEndTime=500
-nSamples=5
+nSamples=20
 refSample=$nSamples
-nDVs=1
+nDVs=4
 predictSamples="1 2"
 
 ######################################################
