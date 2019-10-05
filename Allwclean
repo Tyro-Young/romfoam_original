@@ -6,7 +6,7 @@ wclean
 rm Make/options
 cd ../../
 
-cd ./solvers/simpleFoamOfflineROM
+cd ./applications/solvers/simpleFoamOfflineROM
 wclean
 rm Make/options
 
