@@ -13,32 +13,32 @@ predictSamples="1 2"
 # pre-processing
 ######################################################
 
-#cp -r 0.orig 0
-#sed -i "/numberOfSubdomains/c\numberOfSubdomains $nProcs;" system/decomposeParDict
-#if [ $nProcs -gt 1 ]; then
-#  decomposePar
-#fi
-#
-#######################################################
-## runOffline
-#######################################################
-#
-#for n in `seq 1 1 $nSamples`; do
-#
-#  rm -rf ../sample$n
-#  cp -r ../runROM ../sample$n
-#
-#  cd ../sample$n
-#  killall -9 foamRun.sh
-#  ./foamRun.sh $exec $nProcs $solver &
-#  sleep 3
-#  $exec -np $nProcs python runFlow.py --task=run --sample=$n --mode=train --nSamples=$nSamples
-#  killall -9 foamRun.sh
-#  sleep 3
-#
-#  cd ../runROM
-#  
-#done
+cp -r 0.orig 0
+sed -i "/numberOfSubdomains/c\numberOfSubdomains $nProcs;" system/decomposeParDict
+if [ $nProcs -gt 1 ]; then
+  decomposePar
+fi
+
+#####################################################
+# runOffline
+#####################################################
+
+for n in `seq 1 1 $nSamples`; do
+
+  rm -rf ../sample$n
+  cp -r ../runROM ../sample$n
+
+  cd ../sample$n
+  killall -9 foamRun.sh
+  ./foamRun.sh $exec $nProcs $solver &
+  sleep 3
+  $exec -np $nProcs python runFlow.py --task=run --sample=$n --mode=train --nSamples=$nSamples
+  killall -9 foamRun.sh
+  sleep 3
+
+  cd ../runROM
+  
+done
 
 $exec -np $nProcs python runFlow.py --task=writedelmat --sample=$nSamples --mode=train --nSamples=$nSamples
 sleep 3
