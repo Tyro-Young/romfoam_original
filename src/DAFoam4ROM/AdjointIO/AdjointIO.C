@@ -290,8 +290,9 @@ AdjointIO::AdjointIO
     CofR                 = readOptionOrDefault<vector>(objOptions,"CofR",vector::zero);
     rotRad               = readOptionOrDefault<vector>(objOptions,"rotRad",vector::zero);
 
+    /*
     // print all the parameters to screen    
-    //Info<<"Adjoint Parameters"<<adjointParameters_<<endl;
+    Info<<"Adjoint Parameters"<<adjointParameters_<<endl;
 
     // read fvSchemes
     IOdictionary fvSchemesDict
@@ -322,6 +323,7 @@ AdjointIO::AdjointIO
         )
     );
     Info<<"fvSolution"<<fvSolutionDict<<endl;
+    */
 
 }
 
