@@ -291,7 +291,7 @@ AdjointIO::AdjointIO
     rotRad               = readOptionOrDefault<vector>(objOptions,"rotRad",vector::zero);
 
     // print all the parameters to screen    
-    Info<<"Adjoint Parameters"<<adjointParameters_<<endl;
+    //Info<<"Adjoint Parameters"<<adjointParameters_<<endl;
 
     // read fvSchemes
     IOdictionary fvSchemesDict

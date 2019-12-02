@@ -1,0 +1,2 @@
+FoamFile{version 2.0;format ascii;class dictionary;location system;object adjointDict;}
+nSamples 5; deltaFFD (1.0); svdType cross; svdTol 1e-8; svdMaxIts 100; svdRequestedN 5; useMF 1; mfStep 1e-6; debugMode 0;

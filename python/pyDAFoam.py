@@ -753,7 +753,7 @@ class PYDAFOAM(AeroSolver):
                     'outputdirectory':[str,'../'],
                     'writesolution':[bool,False],
                     'writelinesearch':[bool,False],
-                    'printalloptions':[bool,True],
+                    'printalloptions':[bool,False],
          
                     # controlDict
                     'maxflowiters':[int,1000],
