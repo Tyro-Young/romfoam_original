@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Clean OF_ROM
 
+rm *.pyc
+rm python/*.pyc
+
 cd src/ReducedOrderModeling
 wclean
 rm Make/options
@@ -14,6 +17,10 @@ wclean
 rm Make/options
 
 cd ../simpleFoamOnlineROM
+wclean
+rm Make/options
+
+cd ../simpleDAFoam
 wclean
 rm Make/options
 

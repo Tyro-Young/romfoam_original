@@ -12,7 +12,7 @@ import sys
 import numpy as np
 from mpi4py import MPI
 from baseclasses import *
-from dafoam import *
+from of_rom import *
 from pygeo import *
 from pyspline import *
 from idwarp import *

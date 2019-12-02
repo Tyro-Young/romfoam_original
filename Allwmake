@@ -19,6 +19,25 @@ function makeSolvers()
     wmake 
 }
 
+function makeIncompressible() 
+{
+    if [ -f Make/files_Incompressible ]; then
+        cp Make/files_Incompressible Make/files
+    fi
+    sed -e '1d' Make/options_Incompressible > Make/options
+    sed -i '4i\    \-DIncompressibleFlow \\' Make/options
+    if [ "$DF_CompileMode" = "Debug" ]; then
+        sed -i '4i\    \-DFULLDEBUG -g -O0 \\' Make/options
+    fi
+    wmake dep
+    cp Make/options_Incompressible Make/options
+    sed -i '4i\    \-DIncompressibleFlow \\' Make/options
+    if [ "$DF_CompileMode" = "Debug" ]; then
+        sed -i '4i\    \-DFULLDEBUG -g -O0 \\' Make/options
+    fi
+    wmake 
+}
+
 cd src/DAFoam4ROM
 ./Allwmake
 
@@ -32,6 +51,9 @@ makeSolvers
 
 cd ../simpleFoamOnlineROM
 makeSolvers
+
+cd ../simpleDAFoam
+makeIncompressible
 
 #cd ../../doc
 #./Allwmake
