@@ -4,6 +4,9 @@
 cd src/ReducedOrderModeling
 wclean
 rm Make/options
+
+cd ../DAFoam4ROM
+./Allwclean
 cd ../../
 
 cd ./applications/solvers/simpleFoamOfflineROM

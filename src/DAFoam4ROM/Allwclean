@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Clean DAFoam
+
+cd myLibs
+./Allwclean
+cd ../
+
+wclean
+rm Make/options Make/files
+

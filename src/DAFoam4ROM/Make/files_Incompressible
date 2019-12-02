@@ -1,0 +1,23 @@
+AdjointIO/AdjointIO.C
+
+AdjointSolverRegistry/AdjointSolverRegistry.C
+AdjointSolverRegistry/AdjointSolverRegistrySimpleFoam.C
+
+AdjointRASModel/AdjointRASModel.C
+AdjointRASModel/AdjointDummyTurbulenceModel.C
+AdjointRASModel/AdjointSpalartAllmaras.C
+AdjointRASModel/AdjointSpalartAllmarasFv3.C
+AdjointRASModel/AdjointkOmegaSST.C
+AdjointRASModel/AdjointkEpsilon.C
+
+AdjointIndexing/AdjointIndexing.C
+
+AdjointJacobianConnectivity/AdjointJacobianConnectivity.C
+AdjointJacobianConnectivity/AdjointJacobianConnectivitySimpleFoam.C
+
+AdjointObjectiveFunction/AdjointObjectiveFunction.C
+
+AdjointDerivative/AdjointDerivative.C
+AdjointDerivative/AdjointDerivativeSimpleFoam.C
+
+LIB = $(FOAM_USER_LIBBIN)/libDAFoam4ROM

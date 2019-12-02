@@ -19,7 +19,10 @@ function makeSolvers()
     wmake 
 }
 
-cd src/ReducedOrderModeling
+cd src/DAFoam4ROM
+./Allwmake
+
+cd ../ReducedOrderModeling
 makeSolvers
 cd ../../
 
