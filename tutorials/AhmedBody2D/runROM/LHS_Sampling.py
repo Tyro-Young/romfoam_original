@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 
 from smt.sampling_methods import LHS
 
-xlimits = np.array([[0.0,0.05],[0.0, 0.05],[0.0,0.05],[0.0,0.05]])
+xlimits = np.array([[-0.05,0.05],[-0.05, 0.05]])
 sampling = LHS(xlimits=xlimits,criterion='cm')
 
-num = 20
+num = 40
 x = sampling(num)
 
 print(x.shape)
