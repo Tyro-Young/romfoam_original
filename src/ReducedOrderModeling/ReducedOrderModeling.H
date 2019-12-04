@@ -68,6 +68,7 @@ private:
     AdjointObjectiveFunction& adjObj_;
     AdjointDerivative& adjDev_;
     word mode_;
+    const objectRegistry& db_;
 
 protected:
 
@@ -103,6 +104,12 @@ protected:
     
     /// vector to store the delta FFD displacement for prediction
     Vec deltaFFDVec_;
+
+    /// full and reduced  state vector
+    Vec wVecFull_, wVecFullRef_, wVecReduced_,wVecReducedRef_;;
+
+    /// full and reduced residual vector
+    Vec rVecFull_, rVecFullRef_, rVecReduced_, rVecReducedRef_;
 
     /// number of FFD points or design variables
     label nFFDs_;
@@ -203,6 +210,9 @@ public:
     /// initialize onlineROM
     void initializeOnlineLinear();
 
+    /// initialize onlineROM
+    void initializeOnlineNonlinear();
+
     /// solve onlineROM
     void solveOnlineLinear();
 
@@ -211,6 +221,9 @@ public:
 
     /// write the new fields as UROM pROM etc.
     void writeNewField(word postfix);
+
+    /// Newton solver for ROM nonlinear equations
+    void solveNK();
 
     /// read an option from dict and add them to romParameters_
     template<class type>
@@ -221,6 +234,48 @@ public:
         type defaultValue
     );
 
+    // NK Member Functions
+    static PetscErrorCode FormFunction(void* ctx,Vec wVec,Vec rVec);
+    void NKCalcResidualsReduced(Vec wVec,Vec rVec);
+    void NKCalcResidualsFull(Vec wVec,Vec rVec);
+    /// general function to set vecX to/from states/residual variables
+    void NKSetVecs
+    (
+        Vec vecX, 
+        word mode, 
+        scalar scaleFactor, 
+        word postFix
+    );
+    void initializeReducedJacobian(Mat* matIn);
+    void calcReducedJacobian(Mat matIn);
+    void printConvergenceInfo
+    (
+        word mode,
+        HashTable<scalar> objFuncs,
+        label mainIter=0,
+        label nFuncEval=0,
+        word solverType="",
+        scalar step=1.0,
+        scalar linRes=1.0,
+        scalar CFL=1.0,
+        scalar runTime=1.0,
+        scalar turbNorm=1.0,
+        scalar phiNorm=1.0,
+        scalar totalNorm=1.0
+    );
+    scalar getEWTol(scalar norm, scalar oldNorm, scalar rTolLast);
+
+    label nFuncEvals_=0;
+
+    scalar NKLineSearchNew
+    (
+        const Vec wVec,
+        const Vec rVec,
+        const Vec dWVec,
+        Vec wVecNew,
+        Vec rVecNew
+    );
+    label checkNegativeTurb();
 
 
 };

@@ -57,6 +57,7 @@ ReducedOrderModeling::ReducedOrderModeling
     adjObj_(adjObj),
     adjDev_(adjDev),
     mode_(mode),
+    db_(mesh.thisDb()),
     // read dict from system/romDict
     romDict_
     (
@@ -147,6 +148,69 @@ void ReducedOrderModeling::initializeOnlineLinear()
     VecAssemblyEnd(deltaFFDVec_);
 
     if(debugMode) adjIO_.writeVectorASCII(deltaFFDVec_,"deltaFFDVec");
+
+}
+
+void ReducedOrderModeling::initializeOnlineNonlinear()
+{
+    
+    this->initializeSVDPhiMat();
+
+    // read svdPhiWMat
+    label nProcs = Pstream::nProcs();
+    std::ostringstream np("");
+    np<<nProcs;
+    std::string fNamePhi="svdPhiWMat_"+np.str();
+    adjIO_.readMatrixBinary(svdPhiWMat_,fNamePhi);
+
+    // read svdPhiRMat
+    std::ostringstream npR("");
+    npR<<nProcs;
+    std::string fNamePhiR="svdPhiRMat_"+npR.str();
+    adjIO_.readMatrixBinary(svdPhiRMat_,fNamePhiR);
+
+    
+    VecCreate(PETSC_COMM_WORLD,&deltaFFDVec_);
+    VecSetSizes(deltaFFDVec_,PETSC_DECIDE,nFFDs_);
+    VecSetFromOptions(deltaFFDVec_);
+    VecZeroEntries(deltaFFDVec_);
+
+    label Istart,Iend;
+    VecGetOwnershipRange(deltaFFDVec_,&Istart,&Iend);
+    
+    for(label i=Istart;i<Iend;i++)
+    {
+        scalar val=deltaFFD[i];
+        VecSetValue(deltaFFDVec_,i,val,INSERT_VALUES);
+    }
+    VecAssemblyBegin(deltaFFDVec_);
+    VecAssemblyEnd(deltaFFDVec_);
+
+    if(debugMode) adjIO_.writeVectorASCII(deltaFFDVec_,"deltaFFDVec");
+
+    VecCreate(PETSC_COMM_WORLD,&wVecFull_);
+    VecSetSizes(wVecFull_,localSize_,PETSC_DECIDE);
+    VecSetFromOptions(wVecFull_);
+    VecZeroEntries(wVecFull_);
+
+    VecDuplicate(wVecFull_,&wVecFullRef_);
+    VecDuplicate(wVecFull_,&rVecFull_);
+    VecDuplicate(wVecFull_,&rVecFullRef_);
+    VecZeroEntries(wVecFullRef_);
+    VecZeroEntries(rVecFull_);
+    VecZeroEntries(rVecFullRef_);
+
+    VecCreate(PETSC_COMM_WORLD,&wVecReduced_);
+    VecSetSizes(wVecReduced_,PETSC_DECIDE,nSamples);
+    VecSetFromOptions(wVecReduced_);
+    VecZeroEntries(wVecReduced_);
+
+    VecDuplicate(wVecReduced_,&wVecReducedRef_);
+    VecDuplicate(wVecReduced_,&rVecReduced_);
+    VecDuplicate(wVecReduced_,&rVecReducedRef_);
+    VecZeroEntries(wVecReducedRef_);
+    VecZeroEntries(rVecReduced_);
+    VecZeroEntries(rVecReducedRef_);
 
 }
 
@@ -1214,6 +1278,837 @@ void ReducedOrderModeling::solveOnlineLinear()
 
 void ReducedOrderModeling::solveOnlineNonlinear()
 {
+    this->initializeOnlineNonlinear();
+
+    // we use the Newton method to solver rResiduals(rStates)=0
+    this->solveNK();
+
+}
+
+void ReducedOrderModeling::solveNK()
+{
+    Info<<endl<<"***** Solving ROM Nonlinear Equation Using Newton-Krylov Method *****"<<endl;
+
+    // KSP
+    KSP ksp;
+    // number of GMRES linear iterations
+    label GMRESIters;
+    // EW parameters
+    scalar rTolLast=adjIO_.nkEWRTol0; // EW rTol0, EW default is 0.1 but we can increase a bit
+    scalar rTol=rTolLast;
+    scalar rVecNorm;
+    scalar rVecNormOld=0.0;
+    scalar aTol=1e-16;
+    // reduced Jacobians
+    Mat rdRdW,rdRdWPC;
+    // total residual norm including all variables
+    scalar totalResNorm0;
+    scalar totalResNorm;
+    // these vars are for store the tolerance for GMRES linear solution
+    scalar rGMRESHist[adjIO_.nkGMRESMaxIters+1];
+    label nGMRESIters=adjIO_.nkGMRESMaxIters+1;
+
+    // create reduced Jacobian and set function evaluation 
+    MatCreateMFFD(PETSC_COMM_WORLD,PETSC_DECIDE,PETSC_DECIDE,nSamples,nSamples,&rdRdW);
+    MatMFFDSetFunction(rdRdW,FormFunction,this);
+
+    // initialize and calculate PCMat
+    this->initializeReducedJacobian(&rdRdWPC);
+    // save the unperturb residual statistics as reference
+    // we will verify against this reference to ensure consistent residuals after perturbing
+    // and resetting states
+    adjDev_.calcFlowResidualStatistics("set");
+    this->calcReducedJacobian(rdRdWPC); 
+    adjIO_.writeMatrixASCII(rdRdWPC,"rdRdWPC");
+
+    // first compute/assign the initial wVec and rVec and compute the initial totalResNorm0
+    VecZeroEntries(wVecReduced_);
+    VecZeroEntries(wVecReducedRef_);
+    VecZeroEntries(rVecReduced_);  
+    VecZeroEntries(rVecReducedRef_);
+    this->NKCalcResidualsReduced(wVecReduced_,rVecReduced_);
+    this->NKCalcResidualsReduced(wVecReduced_,rVecReducedRef_);
+
+    // compute the initial norm
+    VecNorm(rVecReduced_,NORM_2,&totalResNorm0);
+    totalResNorm=totalResNorm0;
+
+    // add options and initialize ksp
+    dictionary adjOptions;
+    adjOptions.add("GMRESRestart",adjIO_.nkGMRESRestart);
+    adjOptions.add("GlobalPCIters",adjIO_.nkGlobalPCIters);
+    adjOptions.add("ASMOverlap",adjIO_.nkASMOverlap);
+    adjOptions.add("LocalPCIters",adjIO_.nkLocalPCIters);
+    adjOptions.add("JacMatReOrdering",adjIO_.nkJacMatReOrdering);
+    adjOptions.add("PCFillLevel",adjIO_.nkPCFillLevel);
+    adjOptions.add("GMRESMaxIters",adjIO_.nkGMRESMaxIters);
+    adjOptions.add("GMRESRelTol",rTol);
+    adjOptions.add("GMRESAbsTol",aTol);
+    adjOptions.add("printInfo",0);
+    //Info<<adjOptions<<endl;
+    adjDev_.createMLRKSP(&ksp,rdRdW,rdRdWPC,adjOptions);
+
+    // initialize objFuncs
+    HashTable<scalar> objFuncs;
+    forAll(adjIO_.objFuncs,idxI)
+    {
+        word objFunc = adjIO_.objFuncs[idxI];
+        adjObj_.calcObjFuncs(objFunc,0);
+        scalar val = adjObj_.getObjFunc(objFunc);
+        objFuncs.set(objFunc,val);
+    }
+
+    // print the initial convergence information
+    this->printConvergenceInfo("printHeader",objFuncs);
+    this->printConvergenceInfo
+    (
+        "printConvergence",
+        objFuncs,
+        0,
+        0,
+        "  NK  ",
+        1.0,
+        0.0,
+        1.0,
+        scalar(adjDev_.getRunTime()),
+        0.0,
+        0.0,
+        totalResNorm
+    );
+
+    // main loop for NK
+    for(label iterI=1;iterI<adjIO_.nkMaxIters+1;iterI++)
+    {
+        // check if the presribed tolerances are met
+        if (totalResNorm<adjIO_.nkAbsTol)
+        {
+            Info<<"Absolute Tolerance "<<totalResNorm<<" less than the presribed nkAbsTol "<<adjIO_.nkAbsTol<<endl;
+            Info<<"NK completed!"<<endl;
+            break;
+        }
+        else if (totalResNorm/totalResNorm0<adjIO_.nkRelTol)
+        {
+            Info<<"Relative Tolerance "<<totalResNorm/totalResNorm0<<" less than the presribed nkRelTol "<<adjIO_.nkRelTol<<endl;
+            Info<<"NK completed!"<<endl;
+            break;
+        }
+
+        // update the w and v vectors
+        if (iterI>1) 
+        {
+            VecCopy(rVecReducedRef_,rVecReduced_);
+            VecCopy(wVecReducedRef_,wVecReduced_);
+        }
+
+        // compute relative tol using EW
+        VecNorm(rVecReduced_,NORM_2,&rVecNorm);
+        if (iterI>1) rTol=this->getEWTol(rVecNorm,rVecNormOld,rTolLast);
+        rVecNormOld=rVecNorm;
+        rTolLast=rTol;
+
+        if(iterI>1)
+        {
+            // check if we need to recompute PC
+            if(iterI%adjIO_.nkPCLag==0)
+            {
+                this->calcReducedJacobian(rdRdWPC); 
+                KSPDestroy(&ksp);
+                adjOptions.set("GMRESRelTol",rTol);
+                adjDev_.createMLRKSP(&ksp,rdRdW,rdRdWPC,adjOptions);
+            }
+            else
+            {
+                // we need to reassign the relative tolerance computed from EW
+                KSPSetTolerances(ksp,rTol,aTol,PETSC_DEFAULT,adjIO_.nkGMRESMaxIters);
+            }
+
+        }
+
+        // set up rGMRESHist to save the tolerance history for the GMRES solution
+        KSPSetResidualHistory(ksp,rGMRESHist,nGMRESIters,PETSC_TRUE);
+
+        // before solving the ksp, form the baseVector for matrix-vector products.
+        // Note: we need to apply normalize-states to the baseVector
+        // Note that we also scale the dRdW*psi 
+        // in AdjointNewtonKrylov::FormFunction
+        Vec rVecBase;
+        VecDuplicate(rVecReduced_,&rVecBase);
+        VecCopy(rVecReduced_,rVecBase); 
+        //this->setNormalizeStatesScaling2Vec(rVecBase);
+        MatMFFDSetBase(rdRdW,rVecReduced_,rVecBase);
+
+        // solve the linear system
+        // we should use rVec0 as the rhs, however, we need to normalize
+        // the states, so we create this temporary rhs vec to store 
+        // the scaled rVec. Note that we also scale the dRdW*psi 
+        // in AdjointNewtonKrylov::FormFunction
+        Vec rhs, dWVecReduced;
+        VecDuplicate(wVecReduced_,&dWVecReduced);
+        VecDuplicate(rVecReduced_,&rhs);
+        VecCopy(rVecReduced_,rhs);
+        KSPSolve(ksp,rhs,dWVecReduced);
+
+        // get linear solution rTol: linRes
+        KSPGetIterationNumber(ksp,&GMRESIters);
+        nFuncEvals_+=GMRESIters;
+        scalar linRes=rGMRESHist[GMRESIters]/rGMRESHist[0];
+
+        // do a line search and update states
+        VecZeroEntries(rVecReducedRef_);
+        VecZeroEntries(wVecReducedRef_);
+        scalar stepSize=this->NKLineSearchNew(wVecReduced_,rVecReduced_,dWVecReduced,wVecReducedRef_,rVecReducedRef_);
+
+        // update the norm for printting convergence info
+        VecNorm(rVecReducedRef_,NORM_2,&rVecNorm);
+        totalResNorm=rVecNorm;
+    
+        // update objective function values
+        forAll(adjIO_.objFuncs,idxI)
+        {
+            word objFunc = adjIO_.objFuncs[idxI];
+            adjObj_.calcObjFuncs(objFunc,0);
+            scalar val = adjObj_.getObjFunc(objFunc);
+            objFuncs.set(objFunc,val);
+        }
+
+        // print convergence info
+        if (iterI>1 && iterI%20==0)
+        {
+            this->printConvergenceInfo("printHeader",objFuncs);
+        }
+        this->printConvergenceInfo
+        (
+            "printConvergence",
+            objFuncs,
+            iterI,
+            nFuncEvals_,
+            "  NK  ",
+            stepSize,
+            linRes,
+            1.0,
+            scalar(adjDev_.getRunTime()),
+            0,
+            0,
+            totalResNorm
+        );
+
+        // check if the presribed tolerances are met
+        if (Foam::mag(rVecNorm-rVecNormOld)/rVecNormOld<adjIO_.nkSTol)
+        {
+            Info<<"S Tolerance "<<Foam::mag(rVecNorm-rVecNormOld)/rVecNormOld<<" less than the presribed nkSTol "<<adjIO_.nkSTol<<endl;
+            Info<<"NK completed!"<<endl;
+            break;
+        }
+        if (linRes>0.999)
+        {
+            Info<<"GMRES residual drop "<<linRes<<" too small! Quit! "<<endl;
+            break;
+        }
+
+    }
+
+    // assign the latest wVec to variables
+    MatMult(svdPhiWMat_,wVecReducedRef_,wVecFull_);
+    this->NKSetVecs(wVecFull_,"Vec2Var",1.0,"");
+}
+
+
+scalar ReducedOrderModeling::NKLineSearchNew
+(
+    const Vec wVec,
+    const Vec rVec,
+    const Vec dWVec,
+    Vec wVecNew,
+    Vec rVecNew
+)
+{
+    // basic non monotonic line search using backtracking 
+    
+    scalar gamma = 0.999; // line search sufficient decrease coefficient
+    scalar sigma = 0.5;    // line search reduce factor
+    scalar alpha = 1.0;      // initial step size
+
+    PetscErrorCode ierr;
+
+    // compute the norms
+    scalar rVecNorm=0.0, rVecNewNorm=0.0;
+    VecNorm(rVec,NORM_2,&rVecNorm);
+
+    // initial step
+    alpha=1.0;
+
+    // actual backtracking
+    for(label i=0;i<10;i++)
+    {
+        // compute new w value wNew = w-dW Note: dW is the solution from KSP it is dW=wOld-wNew
+        VecWAXPY(wVecNew,-alpha,dWVec,wVec);
+
+        // using the current state to compute rVecNew
+        this->NKCalcResidualsReduced(wVecNew,rVecNew);
+        nFuncEvals_++;
+
+        // compute the rVecNorm at new w
+        ierr=VecNorm(rVecNew,NORM_2,&rVecNewNorm);
+
+        if(ierr == PETSC_ERR_FP)
+        {
+            // floating point seg fault, just reduce the step size
+            alpha = alpha*sigma;
+            Info<<"Seg Fault in line search"<<endl;
+            continue;
+        }
+        else if(this->checkNegativeTurb())
+        {
+            // have negative turbulence, reduce the step size
+            alpha = alpha*sigma;
+            Info<<"Negative turbulence in line search"<<endl;
+            continue;
+        }
+        else if (rVecNewNorm <= rVecNorm*gamma)  // Sufficient reduction
+        {
+            return alpha;
+        }
+        else // reduce step
+        {
+            alpha = alpha * sigma;
+        }
+
+    }
+
+    return alpha;
+
+}
+
+label ReducedOrderModeling::checkNegativeTurb()
+{
+    if(adjIO_.nkSegregatedTurb) return 0;
+
+    const objectRegistry& db=mesh_.thisDb();
+    forAll(adjIdx_.adjStateNames,idxI)
+    {
+        word stateName = adjIdx_.adjStateNames[idxI];
+        word stateType = adjIdx_.adjStateType[stateName];
+        if (stateType == "turbState")
+        {
+            const volScalarField& var =  db.lookupObject<volScalarField>(stateName) ;
+            forAll(var,idxJ)
+            {
+                if (var[idxJ]<0)
+                {
+                    return 1;
+                }
+            }
+            forAll(var.boundaryField(),patchI)
+            {
+                forAll(var.boundaryField()[patchI],faceI)
+                {
+                    if (var.boundaryField()[patchI][faceI]<0)
+                    {
+                        return 1;
+                    }
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
+
+scalar ReducedOrderModeling::getEWTol
+(
+    scalar norm, 
+    scalar oldNorm, 
+    scalar rTolLast
+)
+{
+    // There are the default EW Parameters from PETSc. They seem to work well
+    // version:  2
+    // rTolLast: 0.1
+    // rTolMax:  0.9
+    // gamma:    1.0
+    // alpha:    1.61803398874989
+    // threshold: 0.1
+
+    scalar rTolMax   = adjIO_.nkEWRTolMax;
+    scalar gamma     = 1.0;
+    scalar alpha     = (1.0+Foam::sqrt(5.0))/2.0;
+    scalar threshold = 0.10;
+    // We use version 2:
+    scalar rTol = gamma*Foam::pow(norm/oldNorm,alpha);
+    scalar sTol = gamma*Foam::pow(rTolLast,alpha);
+
+    if (sTol > threshold)
+    {
+       rTol = max(rTol, sTol);
+    }
+
+    // Safeguard: avoid rtol greater than one
+    rTol = min(rTol, rTolMax);
+
+    return rTol;
+}
+
+void ReducedOrderModeling::calcReducedJacobian(Mat matIn)
+{
+
+    Info<<"Computing dRdWReducedPC "<<endl;
+    
+    PetscInt Istart, Iend;
+    MatGetOwnershipRange(matIn,&Istart,&Iend);
+
+    // comptue wVecFullRef_ and rVecFullRef_
+    // assign the current reference states from OpenFOAM to wVecFull_
+    VecZeroEntries(wVecFullRef_);
+    this->NKSetVecs(wVecFullRef_,"Var2Vec",1.0,"");
+    // compute the referene full residual rVecFull_
+    VecZeroEntries(rVecFullRef_);
+    this->NKCalcResidualsFull(wVecFullRef_,rVecFullRef_);
+    // then compute rVecReducedRef_
+    VecZeroEntries(rVecReducedRef_);
+    MatMultTranspose(svdPhiRMat_,rVecFullRef_,rVecReducedRef_);
+
+    Vec wVecReducedDelta, wVecFullDelta;
+    VecDuplicate(wVecReduced_,&wVecReducedDelta);
+    VecDuplicate(wVecFull_,&wVecFullDelta);
+
+    // get the reference wVecFull_
+    this->NKSetVecs(wVecFull_,"Var2Vec",1.0,"");
+
+    // perturb
+    for(PetscInt nn=0;nn<nSamples;nn++)
+    {
+        // compute perturbed reduced wVec
+        VecZeroEntries(wVecReducedDelta);
+        scalar deltaVal=0.001;
+        VecSetValue(wVecReducedDelta,nn,deltaVal,INSERT_VALUES);
+        // compute perturbed full wVec
+        VecZeroEntries(wVecFullDelta);
+        MatMult(svdPhiWMat_,wVecReducedDelta,wVecFullDelta);
+
+        // now the new wVecFull=wVecFull+wVecFullDelta
+        VecZeroEntries(wVecFull_);
+        VecWAXPY(wVecFull_,1.0,wVecFullRef_,wVecFullDelta);
+
+        // compute the perturbed full residual
+        VecZeroEntries(rVecFull_);
+        this->NKCalcResidualsFull(wVecFull_,rVecFull_);
+
+        // then compute rVecReduced_
+        VecZeroEntries(rVecReduced_);
+        MatMultTranspose(svdPhiRMat_,rVecFull_,rVecReduced_);
+
+        // now we know rVecReducedRef_ and rVecReduced_, we can use FD to compute partials
+        for (PetscInt idx=Istart;idx<Iend;idx++)
+        {
+            VecAXPY(rVecReduced_,-1.0,rVecReducedRef_);
+            VecScale(rVecReduced_,1.0/deltaVal);
+            scalar vecVal;
+            VecGetValues(rVecReduced_,1,&idx,&vecVal);
+            MatSetValues(matIn,1,&idx,1,&nn,&vecVal,INSERT_VALUES);
+        }
+
+    }
+    MatAssemblyBegin(matIn,MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(matIn,MAT_FINAL_ASSEMBLY);
+}
+
+void ReducedOrderModeling::initializeReducedJacobian(Mat* PCMat)
+{
+   
+    // initialize PCMat
+    MatCreate(PETSC_COMM_WORLD,PCMat);
+    MatSetSizes(*PCMat,PETSC_DECIDE,PETSC_DECIDE,nSamples,nSamples);
+    MatSetFromOptions(*PCMat);
+    MatMPIAIJSetPreallocation(*PCMat,nSamples,NULL,nSamples,NULL);
+    MatSeqAIJSetPreallocation(*PCMat,nSamples,NULL);
+    MatSetUp(*PCMat);
+    MatZeroEntries(*PCMat);
+    
+
+}
+
+PetscErrorCode ReducedOrderModeling::FormFunction(void* ctx,Vec wVec,Vec rVec)
+{
+    
+    // Given an input vec wVec, calculate the function vec rWec
+    // wVec: vector storing all the states
+    // rVec: vector storing the residuals
+
+    ReducedOrderModeling *rom = (ReducedOrderModeling*) ctx;
+
+    rom->NKCalcResidualsReduced(wVec,rVec);
+
+    //rom->setNormalizeStatesScaling2Vec(rVec);
+    
+    return 0;
+    
+}
+
+void ReducedOrderModeling::NKCalcResidualsReduced(Vec wVec,Vec rVec)
+{
+    // Given an input vec wVec, calculate the function vec rWec
+    // wVec: vector storing all the states
+    // rVec: vector storing the residuals
+    
+    // first compute the full length state vector from the reduced state vector
+    VecZeroEntries(wVecFull_);
+    MatMult(svdPhiWMat_,wVec,wVecFull_);
+
+    // assign the wVecFull to the OpenFOAM field variables
+    this->NKSetVecs(wVecFull_,"Vec2Var",1.0,"");
+
+    // compute the full length residual in DAFoam
+    label isRef=0,isPC=0;
+    adjDev_.updateStateVariableBCs();
+    adjDev_.calcResiduals(isRef,isPC);
+    adjRAS_.calcTurbResiduals(isRef,isPC);
+
+    // assign the OpenFOAM field variables back to vVecFull_
+    VecZeroEntries(rVecFull_);
+    this->NKSetVecs(rVecFull_,"Var2Vec",1.0,"Res");
+
+    // convert the full length residual to the reduced residual vector
+    VecZeroEntries(rVec);
+    MatMultTranspose(svdPhiRMat_,rVecFull_,rVec);
+
+    return;
+
+}
+
+void ReducedOrderModeling::NKCalcResidualsFull(Vec wVec,Vec rVec)
+{
+    // Given an input vec wVec, calculate the function vec rWec
+    // wVec: vector storing all the states
+    // rVec: vector storing the residuals
+
+    // assign the wVecFull to the OpenFOAM field variables
+    this->NKSetVecs(wVec,"Vec2Var",1.0,"");
+
+    // compute the full length residual in DAFoam
+    label isRef=0,isPC=0;
+    adjDev_.updateStateVariableBCs();
+    adjDev_.calcResiduals(isRef,isPC);
+    adjRAS_.calcTurbResiduals(isRef,isPC);
+
+    // assign the OpenFOAM field variables back to vVecFull_
+    VecZeroEntries(rVec);
+    this->NKSetVecs(rVec,"Var2Vec",1.0,"Res");
+
+    return;
+
+}
+
+void ReducedOrderModeling::NKSetVecs
+(
+    Vec vecX, 
+    word mode, 
+    scalar scaleFactor, 
+    word postFix
+)
+{
+    
+    // this is a general function to assign vec to/from states/residuals
+
+    PetscInt    Istart, Iend;
+    VecGetOwnershipRange(vecX,&Istart,&Iend);
+    PetscScalar* vecXArray;
+    const PetscScalar* vecXArrayConst;
+    if(mode == "Vec2Var" || mode == "VecAdd2Var")
+    {
+        VecGetArrayRead(vecX,&vecXArrayConst);
+    }
+    else if (mode == "Var2Vec" || mode == "VarAdd2Vec")
+    {
+        VecGetArray(vecX,&vecXArray);
+    }
+    else
+    {
+        FatalErrorIn("")<<"mode not valid"<< abort(FatalError);
+    }
+    
+    for(PetscInt i=Istart;i<Iend;i++)
+    {
+        label localIdx =  i-Istart;
+
+        word stateName = adjIdx_.adjStateName4LocalAdjIdx[localIdx];
+        word varName = stateName+postFix;
+        const word& stateType = adjIdx_.adjStateType[stateName];
+        
+        scalar cellIFaceI =  adjIdx_.cellIFaceI4LocalAdjIdx[localIdx];
+
+        if(stateType == "volVectorState")
+        {
+
+            volVectorField& var = const_cast<volVectorField&>( db_.lookupObject<volVectorField>(varName) );
+            label cellI,comp;
+            cellI = round(cellIFaceI);
+            comp = round(10*(cellIFaceI-cellI));
+
+            if(mode == "Vec2Var")
+            {
+                var[cellI][comp] = scaleFactor*vecXArrayConst[localIdx];
+            }
+            else if (mode == "Var2Vec")
+            {
+                vecXArray[localIdx] = scaleFactor*var[cellI][comp];
+            }
+            else if (mode == "VecAdd2Var")
+            {
+                var[cellI][comp] += scaleFactor*vecXArrayConst[localIdx];
+            }
+            else if (mode == "VarAdd2Vec")
+            {
+                vecXArray[localIdx] += scaleFactor*var[cellI][comp];
+            }
+            else
+            {
+                 FatalErrorIn("")<<"mode not valid"<< abort(FatalError);
+            }
+            
+        }
+        else if(stateType == "volScalarState")
+        {
+
+            volScalarField& var = const_cast<volScalarField&>( db_.lookupObject<volScalarField>(varName) );
+            label cellI;
+            cellI = round(cellIFaceI);
+
+            if(mode == "Vec2Var")
+            {
+                var[cellI] = scaleFactor*vecXArrayConst[localIdx];
+            }
+            else if (mode == "Var2Vec")
+            {
+                vecXArray[localIdx] = scaleFactor*var[cellI];
+            }
+            else if (mode == "VecAdd2Var")
+            {
+                var[cellI] += scaleFactor*vecXArrayConst[localIdx];
+            }
+            else if (mode == "VarAdd2Vec")
+            {
+                vecXArray[localIdx] += scaleFactor*var[cellI];
+            }
+            else
+            {
+                 FatalErrorIn("")<<"mode not valid"<< abort(FatalError);
+            }
+
+        }
+        else if(stateType == "turbState" and !adjIO_.nkSegregatedTurb)
+        {
+
+            volScalarField& var = const_cast<volScalarField&>( db_.lookupObject<volScalarField>(varName) );
+            label cellI;
+            cellI = round(cellIFaceI);
+
+            if(mode == "Vec2Var")
+            {
+                var[cellI] = scaleFactor*vecXArrayConst[localIdx];
+            }
+            else if (mode == "Var2Vec")
+            {
+                vecXArray[localIdx] = scaleFactor*var[cellI];
+            }
+            else if (mode == "VecAdd2Var")
+            {
+                var[cellI] += scaleFactor*vecXArrayConst[localIdx];
+            }
+            else if (mode == "VarAdd2Vec")
+            {
+                vecXArray[localIdx] += scaleFactor*var[cellI];
+            }
+            else
+            {
+                 FatalErrorIn("")<<"mode not valid"<< abort(FatalError);
+            }
+        }
+        else if (stateType == "surfaceScalarState")
+        {
+
+            surfaceScalarField& var = const_cast<surfaceScalarField&>( db_.lookupObject<surfaceScalarField>(varName) );
+            label faceI=round(cellIFaceI);
+            if(faceI<mesh_.nInternalFaces())
+            {
+                if(mode == "Vec2Var")
+                {
+                    var[faceI] = scaleFactor*vecXArrayConst[localIdx];
+                }
+                else if (mode == "Var2Vec")
+                {
+                    vecXArray[localIdx] = scaleFactor*var[faceI];
+                }
+                else if (mode == "VecAdd2Var")
+                {
+                    var[faceI] += scaleFactor*vecXArrayConst[localIdx];
+                }
+                else if (mode == "VarAdd2Vec")
+                {
+                    vecXArray[localIdx] += scaleFactor*var[faceI];
+                }
+                else
+                {
+                     FatalErrorIn("")<<"mode not valid"<< abort(FatalError);
+                }
+            }
+            else
+            {
+                label relIdx=faceI-mesh_.nInternalFaces();
+                label patchIdx=adjIdx_.bFacePatchI[relIdx];
+                label faceIdx=adjIdx_.bFaceFaceI[relIdx];
+
+                if(mode == "Vec2Var")
+                {
+                    var.boundaryFieldRef()[patchIdx][faceIdx] = scaleFactor*vecXArrayConst[localIdx];
+                }
+                else if (mode == "Var2Vec")
+                {
+                    vecXArray[localIdx] = scaleFactor*var.boundaryFieldRef()[patchIdx][faceIdx];
+                }
+                else if (mode == "VecAdd2Var")
+                {
+                    var.boundaryFieldRef()[patchIdx][faceIdx] += scaleFactor*vecXArrayConst[localIdx];
+                }
+                else if (mode == "VarAdd2Vec")
+                {
+                    vecXArray[localIdx] += scaleFactor*var.boundaryFieldRef()[patchIdx][faceIdx];
+                }
+                else
+                {
+                     FatalErrorIn("")<<"mode not valid"<< abort(FatalError);
+                }
+
+            }
+        }
+        else
+        {
+            FatalErrorIn("")<<"statetype not valid"<< abort(FatalError);
+        }
+    }
+    
+    if(mode == "Vec2Var" || mode == "VecAdd2Var")
+    {
+        VecRestoreArrayRead(vecX,&vecXArrayConst);
+    }
+    else if (mode == "Var2Vec" || mode == "VarAdd2Vec")
+    {
+        VecRestoreArray(vecX,&vecXArray);
+        //Info<<"Pass NKFormFunctoin5"<<endl;
+        VecAssemblyBegin(vecX);
+        VecAssemblyEnd(vecX);
+    }
+    else
+    {
+        FatalErrorIn("")<<"mode not valid"<< abort(FatalError);
+    }
+
+    if(mode == "Vec2Var" or mode == "VecAdd2Var")
+    {
+        adjDev_.updateStateVariableBCs();
+    }
+    
+    return;
+
+}
+
+
+void ReducedOrderModeling::printConvergenceInfo
+(
+    word mode,
+    HashTable<scalar> objFuncs,
+    label mainIter,
+    label nFuncEval,
+    word solverType,
+    scalar step,
+    scalar linRes,
+    scalar CFL,
+    scalar runTime,
+    scalar turbNorm,
+    scalar phiNorm,
+    scalar totalNorm
+    
+)
+{
+    if (mode=="printHeader")
+    {
+        word printInfo="";
+        printInfo +=   "--------------------------------------------------------------------------------------------------------";
+        forAll(objFuncs.toc(),idxI)
+        {
+            printInfo += "------------------------";
+        }
+        printInfo += "\n";
+
+        printInfo +=   "| Main | Func | Solv |  Step  |   Lin   |   CFL   |   RunTime   |  Res Norm  |  Res Norm  |  Res Norm  |";
+        forAll(objFuncs.toc(),idxI)
+        {
+            word key = objFuncs.toc()[idxI];
+            label keySize=key.size();
+            for(label i=0;i<13-keySize;i++) printInfo += " ";
+            printInfo += key+"          |";
+        }
+        printInfo += "\n";
+
+        printInfo +=   "| Iter | Eval | Type |        |   Res   |         |   (s)       |  (Turb)    |  (Phi)     |  (Total)   |";
+        forAll(objFuncs.toc(),idxI)
+        {
+            word key = objFuncs.toc()[idxI];
+            printInfo += "                       |";
+        }
+        printInfo += "\n";
+
+        printInfo +=   "--------------------------------------------------------------------------------------------------------";
+        forAll(objFuncs.toc(),idxI)
+        {
+            printInfo += "------------------------";
+        }
+        printInfo += "\n";
+    
+        PetscPrintf
+        (
+            PETSC_COMM_WORLD,
+            printInfo.c_str()
+        );
+    }
+    else if (mode=="printConvergence")
+    {
+        PetscPrintf
+        (
+            PETSC_COMM_WORLD,
+            " %6d %6d %s  %.4f   %.5f   %.2e   %.4e   %.4e   %.4e   %.4e",
+            mainIter,
+            nFuncEval,
+            solverType.c_str(),
+            step,
+            linRes,
+            CFL,
+            runTime,
+            turbNorm,
+            phiNorm,
+            totalNorm
+        );
+        forAll(objFuncs.toc(),idxI)
+        {
+            word key = objFuncs.toc()[idxI];
+            scalar val = objFuncs[key];
+            PetscPrintf
+            (
+                PETSC_COMM_WORLD,
+                "   %.15e",
+                val
+            );
+        }
+        PetscPrintf
+        (
+            PETSC_COMM_WORLD,
+            "\n"
+        );
+    }
+    else
+    {
+        FatalErrorIn("")<< "mode not found!"<<abort(FatalError);
+    }
 }
 
 // end of namespace Foam
