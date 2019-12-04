@@ -12,7 +12,7 @@ import sys
 import numpy as np
 from mpi4py import MPI
 from baseclasses import *
-from of_rom import *
+from romfoam import *
 from pygeo import *
 from pyspline import *
 from idwarp import *
@@ -144,7 +144,7 @@ aeroOptions = {
     'referencevalues':         {'magURef':20.0,'ARef':0.00288,'rhoRef':1.0,'pRef':0.0,'LRef':1.0},
 
     # flow setup
-    'adjointsolver':           'simpleDAFoam',
+    'adjointsolver':           'simpleROMFoam',
     'rasmodel':                'SpalartAllmarasFv3',
     'flowcondition':           'Incompressible',
     'maxflowiters':            1000, 

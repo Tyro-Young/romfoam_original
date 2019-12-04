@@ -2,7 +2,7 @@
 
 exec=mpirun
 nProcs=1
-solver=simpleDAFoam
+solver=simpleROMFoam
 runEndTime=500
 nSamples=20
 refSample=$nSamples
@@ -70,9 +70,9 @@ sed -i "/nFFDPoints/c\    nFFDPoints           $nDVs;" system/adjointDict
 sed -i "/startFrom/c\    startFrom       latestTime;" system/controlDict
 
 if [ $nProcs -eq 1 ]; then
-  simpleFoamOfflineROM
+  $solver -mode offlineLinear
 else
-  $exec -np $nProcs simpleFoamOfflineROM -parallel
+  $exec -np $nProcs $solver -mode offlineLinear -parallel
 fi
 
 ######################################################
@@ -105,9 +105,9 @@ for n in $predictSamples; do
   sed -i "/nFFDPoints/c\    nFFDPoints           $nDVs;" system/adjointDict
   sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
   if [ $nProcs -eq 1 ]; then
-    simpleFoamOnlineROM
+    $solver -mode onlineLinear
   else
-    $exec -np $nProcs simpleFoamOnlineROM -parallel
+    $exec -np $nProcs $solver -mode onlineLinear -parallel
   fi
 
   # now run the flow at the predict sample, overwrite the variable at refSample
