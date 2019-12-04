@@ -12,15 +12,7 @@ cd ../DAFoam4ROM
 ./Allwclean
 cd ../../
 
-cd ./applications/solvers/simpleFoamOfflineROM
-wclean
-rm Make/options
-
-cd ../simpleFoamOnlineROM
-wclean
-rm Make/options
-
-cd ../simpleDAFoam
+cd applications/solvers/simpleROMFoam
 wclean
 rm Make/options
 

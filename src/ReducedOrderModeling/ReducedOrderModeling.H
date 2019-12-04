@@ -67,6 +67,7 @@ private:
     AdjointJacobianConnectivity& adjCon_;
     AdjointObjectiveFunction& adjObj_;
     AdjointDerivative& adjDev_;
+    word mode_;
 
 protected:
 
@@ -77,7 +78,10 @@ protected:
     IOdictionary romParameters_; 
 
     /// snapshot matrix for all state variables
-    Mat snapshotMat_;
+    Mat wSnapshotMat_;
+
+    /// snapshot matrix for all residuals
+    Mat rSnapshotMat_;
     
     /// partial R / partial W matrix
     Mat dRdW_;
@@ -85,20 +89,17 @@ protected:
     /// partial R / partial FFD matrix
     Mat dRdFFD_;
     
-    /// the left matrix resulted from the SVD computation
-    Mat svdPhiMat_;
+    /// the left matrix resulted from the SVD computation for states
+    Mat svdPhiWMat_;
+
+    /// the left matrix resulted from the SVD computation for residuals
+    Mat svdPhiRMat_;
     
     /// reduced dRdW matrix
     Mat dRdWReduced_;
     
     /// reduced dRdFFD matrix
     Mat dRdFFDReduced_;
-    
-    /// left vector for SVD uVec*PhiMat*vVec with size same as the row size for PhiMat
-    Vec uVec_;
-    
-    /// right vector for SVD, uVec*PhiMat*vVec with size same as the column size for PhiMat
-    Vec vVec_;
     
     /// vector to store the delta FFD displacement for prediction
     Vec deltaFFDVec_;
@@ -124,7 +125,8 @@ public:
         AdjointIndexing& adjIdx,
         AdjointJacobianConnectivity& adjCon,
         AdjointObjectiveFunction& adjObj,
-        AdjointDerivative& adjDev
+        AdjointDerivative& adjDev,
+        word mode
     );
 
 
@@ -173,12 +175,18 @@ public:
 
     /// initialize dRdFFDReduced
     void initializedRdFFDMatReduced();
-    
-    /// initialize offlineROM
-    void initializeOffline();
 
-    /// solver offline ROM
-    void solveOffline();
+    /// solve offline ROM
+    void solveOfflineLinear();
+
+    /// solve nonlinear ROM
+    void solveOfflineNonlinear();
+
+    /// solve nonlinear ROM
+    void solveOnlineNonlinear();
+
+    /// solve a SVD problem
+    void solveSVD(Mat snapshotMat, Mat phiMat, word phiMatName);
 
     /// assign values for snapshotMat
     void setSnapshotMat();
@@ -193,10 +201,10 @@ public:
     void setdRdWPhiMat(Mat matIn,label n);
 
     /// initialize onlineROM
-    void initializeOnline();
+    void initializeOnlineLinear();
 
     /// solve onlineROM
-    void solveOnline();
+    void solveOnlineLinear();
 
     /// set the new fields (U p nuTilda etc) for ROM
     void setNewField(Vec deltaWVec,word mode);

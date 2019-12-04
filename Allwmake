@@ -45,14 +45,7 @@ cd ../ReducedOrderModeling
 makeSolvers
 cd ../../
 
-
-cd ./applications/solvers/simpleFoamOfflineROM
-makeSolvers
-
-cd ../simpleFoamOnlineROM
-makeSolvers
-
-cd ../simpleDAFoam
+cd applications/solvers/simpleROMFoam
 makeIncompressible
 
 #cd ../../doc

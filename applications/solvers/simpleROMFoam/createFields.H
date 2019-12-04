@@ -70,3 +70,8 @@ autoPtr<AdjointJacobianConnectivity> adjCon
 
 AdjointObjectiveFunction adjObj(mesh,adjIO,adjRAS(),adjIdx,adjCon());
 
+autoPtr<AdjointDerivative> adjDev
+(
+    AdjointDerivative::New(mesh,adjIO,adjReg(),adjRAS(),adjIdx,adjCon(),adjObj)
+);
+

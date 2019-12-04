@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-DAFoam run script for the Ahmed body case
+OF_ROM run script for the Ahmed body case
 """
 
 # =================================================================================================
@@ -12,7 +12,7 @@ import sys
 import numpy as np
 from mpi4py import MPI
 from baseclasses import *
-from dafoam import *
+from romfoam import *
 from pygeo import *
 from pyspline import *
 from idwarp import *
@@ -144,7 +144,7 @@ aeroOptions = {
     'referencevalues':         {'magURef':20.0,'ARef':0.056016,'rhoRef':1.0,'pRef':0.0,'LRef':1.0},
 
     # flow setup
-    'adjointsolver':           'simpleDAFoam',
+    'adjointsolver':           'simpleROMFoam',
     'rasmodel':                'SpalartAllmarasFv3',
     'flowcondition':           'Incompressible',
     'maxflowiters':            500, 

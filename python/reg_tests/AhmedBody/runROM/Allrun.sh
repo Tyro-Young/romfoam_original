@@ -2,7 +2,7 @@
 
 exec=mpirun
 nProcs=1
-solver=simpleDAFoam
+solver=simpleROMFoam
 runEndTime=500
 nSamples=5
 refSample=$nSamples
@@ -70,9 +70,9 @@ sed -i "/nFFDPoints/c\    nFFDPoints           $nDVs;" system/adjointDict
 sed -i "/startFrom/c\    startFrom       latestTime;" system/controlDict
 
 if [ $nProcs -eq 1 ]; then
-  simpleFoamOfflineROM
+  $solver -mode offlineLinear
 else
-  $exec -np $nProcs simpleFoamOfflineROM -parallel
+  $exec -np $nProcs $solver -mode offlineLinear -parallel
 fi
 
 ######################################################
@@ -105,11 +105,11 @@ for n in $predictSamples; do
   sed -i "/nFFDPoints/c\    nFFDPoints           $nDVs;" system/adjointDict
   sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
   if [ $nProcs -eq 1 ]; then
-    simpleFoamOnlineROM
+    $solver -mode onlineLinear
   else
-    $exec -np $nProcs simpleFoamOnlineROM -parallel
+    $exec -np $nProcs $solver -mode onlineLinear -parallel
   fi
-  echo "CD: 0.4110518990851504 (ROM Ref)"
+  echo "CD: 0.411051924314323 (ROM Ref)"
 
 
   # now run the flow at the predict sample, overwrite the variable at refSample
@@ -122,7 +122,7 @@ for n in $predictSamples; do
     $exec -np $nProcs $solver -parallel > flowLog_${n}
   fi
   more objFuncs.dat
-  echo "CD 0.413641217998984 (CFD Ref)"
+  echo "CD 0.4136412179990393 (CFD Ref)"
 
   cd ../runROM
 

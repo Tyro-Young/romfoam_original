@@ -11,7 +11,11 @@ EXE_INC = \
     -I$(LIB_SRC)/finiteVolume/lnInclude \
     -I$(LIB_SRC)/meshTools/lnInclude \
     -I$(LIB_SRC)/sampling/lnInclude \
-    -I$(PETSC_DIR)/include -I$(PETSC_DIR)/$(PETSC_ARCH)/include \
+    -I$(PETSC_DIR)/include \
+    -I$(PETSC_DIR)/$(PETSC_ARCH)/include \
+    -I$(SLEPC_DIR)/include \
+    -I$(SLEPC_DIR)/$(SLEPC_ARCH)/include \
+    -I../../../src/ReducedOrderModeling/lnInclude \
     -I../../../src/DAFoam4ROM/lnInclude
 
 
@@ -24,5 +28,7 @@ EXE_LIBS = \
     -lfvOptions \
     -lsampling \
     -L$(PETSC_LIB) -lpetsc \
+    -L$(SLEPC_LIB) -lslepc \
+    -L$(FOAM_USER_LIBBIN) -lReducedOrderModeling \
     -L$(FOAM_USER_LIBBIN) -lDAFoam4ROM
     

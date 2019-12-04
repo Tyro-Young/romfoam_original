@@ -33,7 +33,7 @@ private:
 
 public:
 
-    TypeName ("simpleDAFoam");
+    TypeName ("simpleROMFoam");
     // Constructors
 
     //- Construct from components

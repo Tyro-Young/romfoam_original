@@ -43,7 +43,8 @@ ReducedOrderModeling::ReducedOrderModeling
     AdjointIndexing& adjIdx,
     AdjointJacobianConnectivity& adjCon,
     AdjointObjectiveFunction& adjObj,
-    AdjointDerivative& adjDev
+    AdjointDerivative& adjDev,
+    word mode
 )
     :
     runTime_(runTime),
@@ -55,6 +56,7 @@ ReducedOrderModeling::ReducedOrderModeling
     adjCon_(adjCon),
     adjObj_(adjObj),
     adjDev_(adjDev),
+    mode_(mode),
     // read dict from system/romDict
     romDict_
     (
@@ -99,24 +101,18 @@ ReducedOrderModeling::ReducedOrderModeling
     localSize_=adjIdx_.nLocalAdjointStates;
     nFFDs_=adjIO_.nFFDPoints;
 
+    label checkMode=0;
+    if (mode_=="nonlinear") checkMode=1;
+    if (mode_=="linear") checkMode=1;
+    if(checkMode!=1) FatalErrorIn("")<<"mode should be linear or nonlinear"<< abort(FatalError);
+
 }
 
 ReducedOrderModeling::~ReducedOrderModeling()
 {
 }
 
-void ReducedOrderModeling::initializeOffline()
-{
-    // save the unperturb residual statistics as reference
-    // we will verify against this reference to ensure consistent residuals after perturbing
-    // and resetting states
-    adjDev_.calcFlowResidualStatistics("set");
-
-    this->initializeSnapshotMat();
-
-}
-
-void ReducedOrderModeling::initializeOnline()
+void ReducedOrderModeling::initializeOnlineLinear()
 {
     
     this->initializedRdWMatReduced();
@@ -128,11 +124,11 @@ void ReducedOrderModeling::initializeOnline()
     np<<nProcs;
     std::string fNamedRdWReduced="dRdWReduced_"+np.str();
     std::string fNamedRdFFDReduced="dRdFFDReduced_"+np.str();
-    std::string fNamePhi="svdPhiMat_"+np.str();
+    std::string fNamePhi="svdPhiWMat_"+np.str();
 
     adjIO_.readMatrixBinary(dRdWReduced_,fNamedRdWReduced);
     adjIO_.readMatrixBinary(dRdFFDReduced_,fNamedRdFFDReduced);
-    adjIO_.readMatrixBinary(svdPhiMat_,fNamePhi);
+    adjIO_.readMatrixBinary(svdPhiWMat_,fNamePhi);
     
     VecCreate(PETSC_COMM_WORLD,&deltaFFDVec_);
     VecSetSizes(deltaFFDVec_,PETSC_DECIDE,nFFDs_);
@@ -158,14 +154,28 @@ void ReducedOrderModeling::initializeSnapshotMat()
 {
     Info<<"Initializing the Snapshot matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
     // now initialize the memory for the jacobian itself
-    // create snapshotMat_
-    MatCreate(PETSC_COMM_WORLD,&snapshotMat_);
-    MatSetSizes(snapshotMat_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
-    MatSetFromOptions(snapshotMat_);
-    MatMPIAIJSetPreallocation(snapshotMat_,nSamples,NULL,nSamples,NULL);
-    MatSeqAIJSetPreallocation(snapshotMat_,nSamples,NULL);
-    MatSetUp(snapshotMat_);
-    Info<<"Snapshot matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+    // create wSnapshotMat_
+    MatCreate(PETSC_COMM_WORLD,&wSnapshotMat_);
+    MatSetSizes(wSnapshotMat_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
+    MatSetFromOptions(wSnapshotMat_);
+    MatMPIAIJSetPreallocation(wSnapshotMat_,nSamples,NULL,nSamples,NULL);
+    MatSeqAIJSetPreallocation(wSnapshotMat_,nSamples,NULL);
+    MatSetUp(wSnapshotMat_);
+    Info<<"W Snapshot matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+
+
+    // create rSnapshotMat_
+    if(mode_=="nonlinear")
+    {
+        MatCreate(PETSC_COMM_WORLD,&rSnapshotMat_);
+        MatSetSizes(rSnapshotMat_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
+        MatSetFromOptions(rSnapshotMat_);
+        MatMPIAIJSetPreallocation(rSnapshotMat_,nSamples,NULL,nSamples,NULL);
+        MatSeqAIJSetPreallocation(rSnapshotMat_,nSamples,NULL);
+        MatSetUp(rSnapshotMat_);
+        Info<<"R Snapshot matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+    }
+
 
     return;
 }
@@ -188,16 +198,30 @@ void ReducedOrderModeling::initializedRdFFDMat()
 
 void ReducedOrderModeling::initializeSVDPhiMat()
 {
-    Info<<"Initializing the Phi matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
-    // create svdPhiMat_
-    MatCreate(PETSC_COMM_WORLD,&svdPhiMat_);
-    MatSetSizes(svdPhiMat_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
-    MatSetFromOptions(svdPhiMat_);
-    MatMPIAIJSetPreallocation(svdPhiMat_,nSamples,NULL,nSamples,NULL);
-    MatSeqAIJSetPreallocation(svdPhiMat_,nSamples,NULL);
-    MatSetOption(svdPhiMat_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-    MatSetUp(svdPhiMat_);
+    Info<<"Initializing the Phi matrix for W. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+    // create svdPhiWMat_
+    MatCreate(PETSC_COMM_WORLD,&svdPhiWMat_);
+    MatSetSizes(svdPhiWMat_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
+    MatSetFromOptions(svdPhiWMat_);
+    MatMPIAIJSetPreallocation(svdPhiWMat_,nSamples,NULL,nSamples,NULL);
+    MatSeqAIJSetPreallocation(svdPhiWMat_,nSamples,NULL);
+    MatSetOption(svdPhiWMat_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+    MatSetUp(svdPhiWMat_);
     Info<<"Phi matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+
+    if(mode_=="nonlinear")
+    {
+        Info<<"Initializing the Phi matrix for R. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+        // create svdPhiRMat_
+        MatCreate(PETSC_COMM_WORLD,&svdPhiRMat_);
+        MatSetSizes(svdPhiRMat_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
+        MatSetFromOptions(svdPhiRMat_);
+        MatMPIAIJSetPreallocation(svdPhiRMat_,nSamples,NULL,nSamples,NULL);
+        MatSeqAIJSetPreallocation(svdPhiRMat_,nSamples,NULL);
+        MatSetOption(svdPhiRMat_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+        MatSetUp(svdPhiRMat_);
+        Info<<"Phi matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+    }
 
     return;
 }
@@ -239,9 +263,9 @@ void ReducedOrderModeling::setSnapshotMat()
     // NOTE: make sure you copy the snap shot flow fields and rename them to 1, 2, 3, etc.
     // and put them in the main folder where you run offlineROM
 
-    Info<<"Setting the snapshot matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+    Info<<"Setting the w snapshot matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
-    MatZeroEntries(snapshotMat_);
+    MatZeroEntries(wSnapshotMat_);
 
     for(label idxI=0; idxI<nSamples;idxI++)
     {
@@ -272,7 +296,7 @@ void ReducedOrderModeling::setSnapshotMat()
                     PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex(stateName,cellI,i);
                     PetscInt colI = idxI;
                     PetscScalar val = state[cellI][i];
-                    MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+                    MatSetValues(wSnapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
                 }
             }                                                           
         }
@@ -299,7 +323,7 @@ void ReducedOrderModeling::setSnapshotMat()
                 PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex(stateName,cellI);
                 PetscInt colI = idxI;
                 PetscScalar val = state[cellI];
-                MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+                MatSetValues(wSnapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
             }          
         }
     
@@ -325,7 +349,7 @@ void ReducedOrderModeling::setSnapshotMat()
                 PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex(stateName,cellI);
                 PetscInt colI = idxI;
                 PetscScalar val = state[cellI];
-                MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+                MatSetValues(wSnapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
             }          
     
         }
@@ -363,48 +387,196 @@ void ReducedOrderModeling::setSnapshotMat()
                     label faceIdx=adjIdx_.bFaceFaceI[relIdx];
                     val = state.boundaryField()[patchIdx][faceIdx];
                 } 
-                MatSetValues(snapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+                MatSetValues(wSnapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
             }
         }
 
     }
 
-    MatAssemblyBegin(snapshotMat_,MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(snapshotMat_,MAT_FINAL_ASSEMBLY);
+    MatAssemblyBegin(wSnapshotMat_,MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(wSnapshotMat_,MAT_FINAL_ASSEMBLY);
 
     if(debugMode)
     {
-        adjIO_.writeMatrixASCII(snapshotMat_,"snapshotMat");
-        adjIO_.writeMatrixBinary(snapshotMat_,"snapshotMat");
+        adjIO_.writeMatrixASCII(wSnapshotMat_,"wSnapshotMat");
+        adjIO_.writeMatrixBinary(wSnapshotMat_,"wSnapshotMat");
     }
 
-    Info<<"The snapshot matrix is set. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+    Info<<"The w snapshot matrix is set. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+
+    if(mode_=="nonlinear")
+    {
+        Info<<"Setting the r snapshot matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+
+        MatZeroEntries(rSnapshotMat_);
+    
+        for(label idxI=0; idxI<nSamples;idxI++)
+        {
+            word varDir = name(idxI+1);
+            Info<< "Reading variables from sample " <<varDir<< endl;
+    
+            forAll(adjReg_.volVectorStates,idxJ)                                           
+            {        
+                const word stateName = adjReg_.volVectorStates[idxJ];
+                const word stateResName = stateName+"Res";                      
+                volVectorField stateRes
+                (
+                    IOobject
+                    (
+                        stateResName,
+                        varDir,
+                        mesh_,
+                        IOobject::MUST_READ,
+                        IOobject::NO_WRITE,
+                        false // not registering the IOobject
+                    ),
+                    mesh_
+                );
+    
+                forAll(stateRes,cellI)
+                {
+                    for(label i=0;i<3;i++)
+                    {
+                        PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex(stateName,cellI,i);
+                        PetscInt colI = idxI;
+                        PetscScalar val = stateRes[cellI][i];
+                        MatSetValues(rSnapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+                    }
+                }                                                           
+            }
+        
+            forAll(adjReg_.volScalarStates,idxJ)
+            {
+                const word stateName = adjReg_.volScalarStates[idxJ];   
+                const word stateResName = stateName+"Res";                   
+                volScalarField stateRes
+                (
+                    IOobject
+                    (
+                        stateResName,
+                        varDir,
+                        mesh_,
+                        IOobject::MUST_READ,
+                        IOobject::NO_WRITE,
+                        false // not registering the IOobject
+                    ),
+                    mesh_
+                );
+    
+                forAll(stateRes,cellI)
+                {
+                    PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex(stateName,cellI);
+                    PetscInt colI = idxI;
+                    PetscScalar val = stateRes[cellI];
+                    MatSetValues(rSnapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+                }          
+            }
+        
+            forAll(adjRAS_.turbStates,idxJ)
+            {
+                const word stateName = adjRAS_.turbStates[idxJ];  
+                const word stateResName = stateName+"Res";                    
+                volScalarField stateRes
+                (
+                    IOobject
+                    (
+                        stateResName,
+                        varDir,
+                        mesh_,
+                        IOobject::MUST_READ,
+                        IOobject::NO_WRITE,
+                        false // not registering the IOobject
+                    ),
+                    mesh_
+                );
+    
+                forAll(stateRes,cellI)
+                {
+                    PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex(stateName,cellI);
+                    PetscInt colI = idxI;
+                    PetscScalar val = stateRes[cellI];
+                    MatSetValues(rSnapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+                }          
+        
+            }
+    
+            forAll(adjReg_.surfaceScalarStates,idxJ)
+            {
+                const word stateName = adjReg_.surfaceScalarStates[idxJ]; 
+                const word stateResName = stateName+"Res";                     
+                surfaceScalarField stateRes
+                (
+                    IOobject
+                    (
+                        stateResName,
+                        varDir,
+                        mesh_,
+                        IOobject::MUST_READ,
+                        IOobject::NO_WRITE,
+                        false // not registering the IOobject
+                    ),
+                    mesh_
+                );
+    
+                forAll(mesh_.faces(), faceI)
+                {
+                    PetscInt rowI = adjIdx_.getGlobalAdjointStateIndex(stateName,faceI);
+                    PetscInt colI = idxI;
+                    PetscScalar val;
+                    if (faceI < adjIdx_.nLocalInternalFaces)
+                    {
+                        val = stateRes[faceI];
+                    }
+                    else
+                    {
+                        label relIdx=faceI-adjIdx_.nLocalInternalFaces;
+                        label patchIdx=adjIdx_.bFacePatchI[relIdx];
+                        label faceIdx=adjIdx_.bFaceFaceI[relIdx];
+                        val = stateRes.boundaryField()[patchIdx][faceIdx];
+                    } 
+                    MatSetValues(rSnapshotMat_,1,&rowI,1,&colI,&val,INSERT_VALUES);
+                }
+            }
+    
+        }
+    
+        MatAssemblyBegin(rSnapshotMat_,MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(rSnapshotMat_,MAT_FINAL_ASSEMBLY);
+    
+        if(debugMode)
+        {
+            adjIO_.writeMatrixASCII(rSnapshotMat_,"rSnapshotMat");
+            adjIO_.writeMatrixBinary(rSnapshotMat_,"rSnapshotMat");
+        }
+    
+        Info<<"The r snapshot matrix is set. "<<runTime_.elapsedClockTime()<<" s"<<endl;
+    }
 }
 
-void ReducedOrderModeling::solveOffline()
+void ReducedOrderModeling::solveSVD(Mat snapshotMat, Mat phiMat, word phiMatName)
 {
     PetscInt       nsv,maxit,nconv,its;
     PetscScalar    tol,sigma,val;
     SVDType        type;
 
-    adjDev_.calcFlowResidualStatistics("print");
-
-    this->setSnapshotMat();
-
+    /// left vector for SVD uVec*PhiMat*vVec with size same as the row size for PhiMat
+    Vec uVec;
+    /// right vector for SVD, uVec*PhiMat*vVec with size same as the column size for PhiMat
+    Vec vVec;
     // vVec has a size same as the colum size of snapshotMat, 
     // while uVec has a size same as the row size of snapshotMat
-    MatCreateVecs(snapshotMat_,&vVec_,&uVec_);
+    MatCreateVecs(snapshotMat,&vVec,&uVec);
+    VecZeroEntries(vVec);
+    VecZeroEntries(uVec);
 
-    this->initializeSVDPhiMat();
-
+    // ----------- compute phiMat for W ----------------
     PetscInt Istart,Iend;
-    MatGetOwnershipRange(svdPhiMat_,&Istart,&Iend);
-
+    MatGetOwnershipRange(phiMat,&Istart,&Iend);
 
     Info<<"Solving the SVD..."<<endl;
     SVD svd;
     SVDCreate(PETSC_COMM_WORLD,&svd);
-    SVDSetOperator(svd,snapshotMat_);
+    SVDSetOperator(svd,snapshotMat);
     SVDSetFromOptions(svd);
 
     if (svdType=="cross") SVDSetType(svd,SVDCROSS);
@@ -444,35 +616,76 @@ void ReducedOrderModeling::solveOffline()
     for (label i=0;i<nconv;i++) 
     {
         // Get converged singular triplets: i-th singular value is stored in sigma
-        SVDGetSingularTriplet(svd,i,&sigma,uVec_,vVec_);
+        SVDGetSingularTriplet(svd,i,&sigma,uVec,vVec);
         Info<<"  "<<sigma<<endl;
         PetscScalar *uVecArray;
-        VecGetArray(uVec_,&uVecArray);
+        VecGetArray(uVec,&uVecArray);
         for(label j=Istart;j<Iend;j++)
         {
             label relIdx = j-Istart;
             val = uVecArray[relIdx];
-            MatSetValues(svdPhiMat_,1,&j,1,&i,&val,INSERT_VALUES);
+            MatSetValues(phiMat,1,&j,1,&i,&val,INSERT_VALUES);
         }
-        VecRestoreArray(uVec_,&uVecArray);
+        VecRestoreArray(uVec,&uVecArray);
     }
-    MatAssemblyBegin(svdPhiMat_,MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(svdPhiMat_,MAT_FINAL_ASSEMBLY);
+    MatAssemblyBegin(phiMat,MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(phiMat,MAT_FINAL_ASSEMBLY);
 
     Info<<"Writing the phiMat"<<endl;
     label nProcs = Pstream::nProcs();
     std::ostringstream np("");
     np<<nProcs;
-    std::string fNamePhi="svdPhiMat_"+np.str();
+    std::string fNamePhi=phiMatName+"_"+np.str();
 
-    adjIO_.writeMatrixBinary(svdPhiMat_,fNamePhi);
-    if(debugMode) adjIO_.writeMatrixASCII(svdPhiMat_,fNamePhi);
+    adjIO_.writeMatrixBinary(phiMat,fNamePhi);
+    if(debugMode) adjIO_.writeMatrixASCII(phiMat,fNamePhi);
 
-    MatDestroy(&snapshotMat_);
     SVDDestroy(&svd);
+}
+
+void ReducedOrderModeling::solveOfflineNonlinear()
+{
+    // save the unperturb residual statistics as reference
+    // we will verify against this reference to ensure consistent residuals after perturbing
+    // and resetting states
+    adjDev_.calcFlowResidualStatistics("set");
+
+    this->initializeSnapshotMat();
+
+    adjDev_.calcFlowResidualStatistics("print");
+
+    this->setSnapshotMat();
+
+    this->initializeSVDPhiMat();
+
+    this->solveSVD(wSnapshotMat_,svdPhiWMat_,"svdPhiWMat");
+
+    this->solveSVD(rSnapshotMat_,svdPhiRMat_,"svdPhiRMat");
+}
+
+void ReducedOrderModeling::solveOfflineLinear()
+{
+
+    // save the unperturb residual statistics as reference
+    // we will verify against this reference to ensure consistent residuals after perturbing
+    // and resetting states
+    adjDev_.calcFlowResidualStatistics("set");
+
+    this->initializeSnapshotMat();
+
+    adjDev_.calcFlowResidualStatistics("print");
+
+    this->setSnapshotMat();
+
+    this->initializeSVDPhiMat();
+
+    this->solveSVD(wSnapshotMat_,svdPhiWMat_,"svdPhiWMat");
 
     Info<<"Calculating dRdW and dRdFFD at time = "<<runTime_.timeName()<<endl;
 
+    label nProcs = Pstream::nProcs();
+    std::ostringstream np("");
+    np<<nProcs;
     
     if(useMF) // matrix free
     {
@@ -518,8 +731,8 @@ void ReducedOrderModeling::solveOffline()
         Mat dRdWPhiMat;    
         Info<< "Computing phiT*dRdW*phi" << endl;
         // now compute the matmat mult
-        MatMatMult(dRdW_,svdPhiMat_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWPhiMat);
-        MatTransposeMatMult(svdPhiMat_,dRdWPhiMat,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
+        MatMatMult(dRdW_,svdPhiWMat_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWPhiMat);
+        MatTransposeMatMult(svdPhiWMat_,dRdWPhiMat,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
     
         MatDestroy(&dRdW_);
     
@@ -549,7 +762,7 @@ void ReducedOrderModeling::solveOffline()
         //******************************** Compute Br *****************************//
         Info<< "Computing phiT*dRdFFD" << endl;
         this->initializedRdFFDMatReduced();
-        MatTransposeMatMult(svdPhiMat_,dRdFFD_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdFFDReduced_);
+        MatTransposeMatMult(svdPhiWMat_,dRdFFD_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdFFDReduced_);
     }
 
     Info<<"Writing the reduced matrices...."<<endl;
@@ -576,7 +789,7 @@ void ReducedOrderModeling::perturbStatesMF(label n)
     VecSetSizes(colVec,localSize_,PETSC_DECIDE);
     VecSetFromOptions(colVec);
     VecZeroEntries(colVec);
-    MatGetColumnVector(svdPhiMat_,colVec,n);
+    MatGetColumnVector(svdPhiWMat_,colVec,n);
 
     PetscScalar *colVecArray;
     VecGetArray(colVec,&colVecArray);
@@ -741,10 +954,10 @@ void ReducedOrderModeling::calcReducedMatsMF()
 
     // now compute phiT*dRdW*Phi
     //Mat phiT;
-    //MatCreateTranspose(svdPhiMat_,&phiT);
+    //MatCreateTranspose(svdPhiWMat_,&phiT);
     void initializedRdWMatReduced();
     Info<< "Computing phiT*dRdW*phi" << endl;
-    MatTransposeMatMult(svdPhiMat_,dRdWPhi,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
+    MatTransposeMatMult(svdPhiWMat_,dRdWPhi,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
 
     // ********************** Br *********************
     Info<<"Calculating dRdFFD... "<<endl;
@@ -752,7 +965,7 @@ void ReducedOrderModeling::calcReducedMatsMF()
     adjDev_.calcdRdFFD(dRdFFD_);
     Info<< "Computing phiT*dRdFFD" << endl;
     void initializedRdFFDMatReduced();
-    MatTransposeMatMult(svdPhiMat_,dRdFFD_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdFFDReduced_);
+    MatTransposeMatMult(svdPhiWMat_,dRdFFD_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdFFDReduced_);
 
     MatDestroy(&dRdFFD_);
     
@@ -915,8 +1128,10 @@ void ReducedOrderModeling::writeNewField(word postfix)
 
 }
 
-void ReducedOrderModeling::solveOnline()
+void ReducedOrderModeling::solveOnlineLinear()
 {
+    this->initializeOnlineLinear();
+
     KSP ksp;
     // add options and initialize ksp
     dictionary adjOptions;
@@ -967,7 +1182,7 @@ void ReducedOrderModeling::solveOnline()
     );
     PetscPrintf(PETSC_COMM_WORLD,"Total iterations %D\n",its);
 
-    MatMult(svdPhiMat_,deltaWVecReduced,deltaWVec);
+    MatMult(svdPhiWMat_,deltaWVecReduced,deltaWVec);
 
     if(debugMode)
     {
@@ -989,12 +1204,16 @@ void ReducedOrderModeling::solveOnline()
     for(label n=0;n<nSamples;n++)
     {
         VecZeroEntries(colVec);
-        MatGetColumnVector(svdPhiMat_,colVec,n);
+        MatGetColumnVector(svdPhiWMat_,colVec,n);
         this->setNewField(colVec,"set");
         word fieldPostfix="Mode"+Foam::name(n);
         this->writeNewField(fieldPostfix);
     }
 
+}
+
+void ReducedOrderModeling::solveOnlineNonlinear()
+{
 }
 
 // end of namespace Foam
