@@ -276,6 +276,7 @@ public:
         Vec rVecNew
     );
     label checkNegativeTurb();
+    scalar getResNorm(word mode);
 
 
 };

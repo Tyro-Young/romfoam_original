@@ -1312,12 +1312,13 @@ void ReducedOrderModeling::solveNK()
     MatCreateMFFD(PETSC_COMM_WORLD,PETSC_DECIDE,PETSC_DECIDE,nSamples,nSamples,&rdRdW);
     MatMFFDSetFunction(rdRdW,FormFunction,this);
 
-    // initialize and calculate PCMat
+    // initialize and calculate rdRdWPC
     this->initializeReducedJacobian(&rdRdWPC);
     // save the unperturb residual statistics as reference
     // we will verify against this reference to ensure consistent residuals after perturbing
     // and resetting states
     adjDev_.calcFlowResidualStatistics("set");
+    adjDev_.calcFlowResidualStatistics("print");
     this->calcReducedJacobian(rdRdWPC); 
     adjIO_.writeMatrixASCII(rdRdWPC,"rdRdWPC");
 
@@ -1332,6 +1333,8 @@ void ReducedOrderModeling::solveNK()
     // compute the initial norm
     VecNorm(rVecReduced_,NORM_2,&totalResNorm0);
     totalResNorm=totalResNorm0;
+    scalar totalResNormFull=this->getResNorm("total");
+    scalar turbResNormFull=this->getResNorm("turb");
 
     // add options and initialize ksp
     dictionary adjOptions;
@@ -1371,8 +1374,8 @@ void ReducedOrderModeling::solveNK()
         0.0,
         1.0,
         scalar(adjDev_.getRunTime()),
-        0.0,
-        0.0,
+        turbResNormFull,
+        totalResNormFull,
         totalResNorm
     );
 
@@ -1402,7 +1405,7 @@ void ReducedOrderModeling::solveNK()
 
         // compute relative tol using EW
         VecNorm(rVecReduced_,NORM_2,&rVecNorm);
-        if (iterI>1) rTol=this->getEWTol(rVecNorm,rVecNormOld,rTolLast);
+        if (iterI>1) rTol=0.1; //this->getEWTol(rVecNorm,rVecNormOld,rTolLast);
         rVecNormOld=rVecNorm;
         rTolLast=rTol;
 
@@ -1431,11 +1434,11 @@ void ReducedOrderModeling::solveNK()
         // Note: we need to apply normalize-states to the baseVector
         // Note that we also scale the dRdW*psi 
         // in AdjointNewtonKrylov::FormFunction
-        Vec rVecBase;
-        VecDuplicate(rVecReduced_,&rVecBase);
-        VecCopy(rVecReduced_,rVecBase); 
+        Vec rVecReducedBase;
+        VecDuplicate(rVecReduced_,&rVecReducedBase);
+        VecCopy(rVecReduced_,rVecReducedBase); 
         //this->setNormalizeStatesScaling2Vec(rVecBase);
-        MatMFFDSetBase(rdRdW,rVecReduced_,rVecBase);
+        MatMFFDSetBase(rdRdW,wVecReduced_,rVecReducedBase);
 
         // solve the linear system
         // we should use rVec0 as the rhs, however, we need to normalize
@@ -1461,6 +1464,8 @@ void ReducedOrderModeling::solveNK()
         // update the norm for printting convergence info
         VecNorm(rVecReducedRef_,NORM_2,&rVecNorm);
         totalResNorm=rVecNorm;
+        scalar totalResNormFull=this->getResNorm("total");
+        scalar turbResNormFull=this->getResNorm("turb");
     
         // update objective function values
         forAll(adjIO_.objFuncs,idxI)
@@ -1487,8 +1492,8 @@ void ReducedOrderModeling::solveNK()
             linRes,
             1.0,
             scalar(adjDev_.getRunTime()),
-            0,
-            0,
+            turbResNormFull,
+            totalResNormFull,
             totalResNorm
         );
 
@@ -1508,8 +1513,14 @@ void ReducedOrderModeling::solveNK()
     }
 
     // assign the latest wVec to variables
+    VecZeroEntries(wVecFull_);
     MatMult(svdPhiWMat_,wVecReducedRef_,wVecFull_);
     this->NKSetVecs(wVecFull_,"Vec2Var",1.0,"");
+
+    adjDev_.calcFlowResidualStatistics("print");
+
+    adjObj_.writeObjFuncValues();
+    this->writeNewField("ROM");
 }
 
 
@@ -1652,7 +1663,7 @@ scalar ReducedOrderModeling::getEWTol
 void ReducedOrderModeling::calcReducedJacobian(Mat matIn)
 {
 
-    Info<<"Computing dRdWReducedPC "<<endl;
+    Info<<"Computing reduced Jacobian "<<endl;
     
     PetscInt Istart, Iend;
     MatGetOwnershipRange(matIn,&Istart,&Iend);
@@ -1673,7 +1684,7 @@ void ReducedOrderModeling::calcReducedJacobian(Mat matIn)
     VecDuplicate(wVecFull_,&wVecFullDelta);
 
     // get the reference wVecFull_
-    this->NKSetVecs(wVecFull_,"Var2Vec",1.0,"");
+    //this->NKSetVecs(wVecFull_,"Var2Vec",1.0,"");
 
     // perturb
     for(PetscInt nn=0;nn<nSamples;nn++)
@@ -1682,6 +1693,8 @@ void ReducedOrderModeling::calcReducedJacobian(Mat matIn)
         VecZeroEntries(wVecReducedDelta);
         scalar deltaVal=0.001;
         VecSetValue(wVecReducedDelta,nn,deltaVal,INSERT_VALUES);
+        VecAssemblyBegin(wVecReducedDelta);
+        VecAssemblyEnd(wVecReducedDelta);
         // compute perturbed full wVec
         VecZeroEntries(wVecFullDelta);
         MatMult(svdPhiWMat_,wVecReducedDelta,wVecFullDelta);
@@ -1699,11 +1712,12 @@ void ReducedOrderModeling::calcReducedJacobian(Mat matIn)
         MatMultTranspose(svdPhiRMat_,rVecFull_,rVecReduced_);
 
         // now we know rVecReducedRef_ and rVecReduced_, we can use FD to compute partials
+        VecAXPY(rVecReduced_,-1.0,rVecReducedRef_);
+        VecScale(rVecReduced_,1.0/deltaVal);
+        // assign it to matIn
+        scalar vecVal;
         for (PetscInt idx=Istart;idx<Iend;idx++)
         {
-            VecAXPY(rVecReduced_,-1.0,rVecReducedRef_);
-            VecScale(rVecReduced_,1.0/deltaVal);
-            scalar vecVal;
             VecGetValues(rVecReduced_,1,&idx,&vecVal);
             MatSetValues(matIn,1,&idx,1,&nn,&vecVal,INSERT_VALUES);
         }
@@ -2109,6 +2123,101 @@ void ReducedOrderModeling::printConvergenceInfo
     {
         FatalErrorIn("")<< "mode not found!"<<abort(FatalError);
     }
+}
+
+scalar ReducedOrderModeling::getResNorm(word mode)
+{
+
+    scalar totalResNorm2=0.0;
+    scalar turbResNorm2=0.0;
+    scalar phiResNorm2=0.0;
+
+    forAll(adjReg_.volVectorStates,idxI)
+    {
+        const word stateName = adjReg_.volVectorStates[idxI];
+        const word resName = stateName+"Res";                   
+        const volVectorField& stateRes = db_.lookupObject<volVectorField>(resName); 
+        
+        vector vecResNorm2(0,0,0);
+        forAll(stateRes,cellI)
+        {
+            vecResNorm2.x()+=Foam::pow(stateRes[cellI].x(),2.0);
+            vecResNorm2.y()+=Foam::pow(stateRes[cellI].y(),2.0);
+            vecResNorm2.z()+=Foam::pow(stateRes[cellI].z(),2.0);
+        }
+        totalResNorm2 += vecResNorm2.x() + vecResNorm2.y() + vecResNorm2.z();
+    }
+    
+    forAll(adjReg_.volScalarStates,idxI)
+    {
+        const word stateName = adjReg_.volScalarStates[idxI];
+        const word resName = stateName+"Res";                   
+        const volScalarField& stateRes = db_.lookupObject<volScalarField>(resName); 
+        
+        scalar scalarResNorm2=0;
+        forAll(stateRes,cellI)
+        {
+            scalarResNorm2+=Foam::pow(stateRes[cellI],2.0);
+        }
+        totalResNorm2 += scalarResNorm2;
+    }
+    
+    forAll(adjRAS_.turbStates,idxI)
+    {
+        const word stateName = adjRAS_.turbStates[idxI];
+        const word resName = stateName+"Res";  
+        const volScalarField& stateRes = db_.lookupObject<volScalarField>(resName); 
+        
+        scalar scalarResNorm2=0;
+        forAll(stateRes,cellI)
+        {
+            scalarResNorm2+=Foam::pow(stateRes[cellI],2.0);
+        }
+        totalResNorm2 += scalarResNorm2;
+        turbResNorm2  += scalarResNorm2;
+    }
+    
+    forAll(adjReg_.surfaceScalarStates,idxI)
+    {
+        const word stateName = adjReg_.surfaceScalarStates[idxI];
+        const word resName = stateName+"Res";  
+        const surfaceScalarField& stateRes = db_.lookupObject<surfaceScalarField>(resName); 
+        
+        forAll(stateRes,faceI)
+        {
+            phiResNorm2+=Foam::pow(stateRes[faceI],2.0);
+    
+        }
+        forAll(stateRes.boundaryField(),patchI)
+        {
+            forAll(stateRes.boundaryField()[patchI],faceI)
+            {
+                scalar bPhiRes = stateRes.boundaryField()[patchI][faceI];
+                phiResNorm2+=Foam::pow(bPhiRes,2.0);
+            }
+        }
+        totalResNorm2 += phiResNorm2;
+        
+    }
+
+
+    reduce(totalResNorm2,sumOp<scalar>());
+    totalResNorm2=Foam::pow(totalResNorm2,0.5);
+
+    reduce(turbResNorm2,sumOp<scalar>());
+    turbResNorm2=Foam::pow(turbResNorm2,0.5);
+
+    reduce(phiResNorm2,sumOp<scalar>());
+    phiResNorm2=Foam::pow(phiResNorm2,0.5);
+
+    if(mode=="total") return totalResNorm2;
+    else if (mode=="turb") return turbResNorm2;
+    else if (mode=="phi") return phiResNorm2;
+    else FatalErrorIn("")<<"mode not valid"<< abort(FatalError);
+
+    FatalErrorIn("")<<"mode not valid"<< abort(FatalError);
+    return -10000.0;
+
 }
 
 // end of namespace Foam
