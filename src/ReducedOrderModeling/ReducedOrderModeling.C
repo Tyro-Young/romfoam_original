@@ -972,21 +972,9 @@ void ReducedOrderModeling::setdRdWPhiMat(Mat matIn,label n)
     }
 }
 
-void ReducedOrderModeling::calcReducedMatsMF()
+void ReducedOrderModeling::calcdRdWPhiMF(Mat dRdWPhi)
 {
-
-    // ********************** Ar *********************
-    // first compute dRdW*phi
-    Info<<"Computing dRdW*Phi..."<<endl;
-    Mat dRdWPhi;
-    MatCreate(PETSC_COMM_WORLD,&dRdWPhi);
-    MatSetSizes(dRdWPhi,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
-    MatSetFromOptions(dRdWPhi);
-    MatMPIAIJSetPreallocation(dRdWPhi,nSamples,NULL,nSamples,NULL);
-    MatSeqAIJSetPreallocation(dRdWPhi,nSamples,NULL);
-    MatSetUp(dRdWPhi);
-    MatZeroEntries(dRdWPhi);
-
+    // compute dRdW*phi
     // do matrix-free for dRdW*Phi = [ R(w+v*mfSetp) - R(w) ] / mfStep
     label isRef=1, isPC=0;
     adjDev_.copyStates("Ref2Var");
@@ -1007,6 +995,24 @@ void ReducedOrderModeling::calcReducedMatsMF()
 
     MatAssemblyBegin(dRdWPhi,MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(dRdWPhi,MAT_FINAL_ASSEMBLY);
+}
+
+void ReducedOrderModeling::calcReducedMatsMF()
+{
+
+    // ********************** Ar *********************
+    // first compute dRdW*phi
+    Info<<"Computing dRdW*Phi..."<<endl;
+    Mat dRdWPhi;
+    MatCreate(PETSC_COMM_WORLD,&dRdWPhi);
+    MatSetSizes(dRdWPhi,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
+    MatSetFromOptions(dRdWPhi);
+    MatMPIAIJSetPreallocation(dRdWPhi,nSamples,NULL,nSamples,NULL);
+    MatSeqAIJSetPreallocation(dRdWPhi,nSamples,NULL);
+    MatSetUp(dRdWPhi);
+    MatZeroEntries(dRdWPhi);
+
+    this->calcdRdWPhiMF(dRdWPhi);
 
     adjDev_.calcFlowResidualStatistics("verify");
 
@@ -1294,11 +1300,9 @@ void ReducedOrderModeling::solveNK()
     // number of GMRES linear iterations
     label GMRESIters;
     // EW parameters
-    scalar rTolLast=adjIO_.nkEWRTol0; // EW rTol0, EW default is 0.1 but we can increase a bit
-    scalar rTol=rTolLast;
     scalar rVecNorm;
-    scalar rVecNormOld=0.0;
-    scalar aTol=1e-16;
+    scalar rTol=1.0e-2;
+    scalar aTol=1.0e-12;
     // reduced Jacobians
     Mat rdRdW,rdRdWPC;
     // total residual norm including all variables
@@ -1317,10 +1321,11 @@ void ReducedOrderModeling::solveNK()
     // save the unperturb residual statistics as reference
     // we will verify against this reference to ensure consistent residuals after perturbing
     // and resetting states
-    adjDev_.calcFlowResidualStatistics("set");
-    adjDev_.calcFlowResidualStatistics("print");
+    //adjDev_.calcFlowResidualStatistics("set");
+    //adjDev_.calcFlowResidualStatistics("print");
     this->calcReducedJacobian(rdRdWPC); 
     adjIO_.writeMatrixASCII(rdRdWPC,"rdRdWPC");
+    adjIO_.writeMatrixBinary(rdRdWPC,"rdRdWPC");
 
     // first compute/assign the initial wVec and rVec and compute the initial totalResNorm0
     VecZeroEntries(wVecReduced_);
@@ -1338,13 +1343,13 @@ void ReducedOrderModeling::solveNK()
 
     // add options and initialize ksp
     dictionary adjOptions;
-    adjOptions.add("GMRESRestart",adjIO_.nkGMRESRestart);
-    adjOptions.add("GlobalPCIters",adjIO_.nkGlobalPCIters);
-    adjOptions.add("ASMOverlap",adjIO_.nkASMOverlap);
-    adjOptions.add("LocalPCIters",adjIO_.nkLocalPCIters);
-    adjOptions.add("JacMatReOrdering",adjIO_.nkJacMatReOrdering);
-    adjOptions.add("PCFillLevel",adjIO_.nkPCFillLevel);
-    adjOptions.add("GMRESMaxIters",adjIO_.nkGMRESMaxIters);
+    adjOptions.add("GMRESRestart",100);
+    adjOptions.add("GlobalPCIters",0);
+    adjOptions.add("ASMOverlap",1);
+    adjOptions.add("LocalPCIters",1);
+    adjOptions.add("JacMatReOrdering","rcm");
+    adjOptions.add("PCFillLevel",0);
+    adjOptions.add("GMRESMaxIters",100);
     adjOptions.add("GMRESRelTol",rTol);
     adjOptions.add("GMRESAbsTol",aTol);
     adjOptions.add("printInfo",0);
@@ -1380,18 +1385,12 @@ void ReducedOrderModeling::solveNK()
     );
 
     // main loop for NK
-    for(label iterI=1;iterI<adjIO_.nkMaxIters+1;iterI++)
+    for(label iterI=1;iterI<100;iterI++)
     {
         // check if the presribed tolerances are met
-        if (totalResNorm<adjIO_.nkAbsTol)
+        if (totalResNorm<aTol)
         {
-            Info<<"Absolute Tolerance "<<totalResNorm<<" less than the presribed nkAbsTol "<<adjIO_.nkAbsTol<<endl;
-            Info<<"NK completed!"<<endl;
-            break;
-        }
-        else if (totalResNorm/totalResNorm0<adjIO_.nkRelTol)
-        {
-            Info<<"Relative Tolerance "<<totalResNorm/totalResNorm0<<" less than the presribed nkRelTol "<<adjIO_.nkRelTol<<endl;
+            Info<<"Absolute Tolerance "<<totalResNorm<<" less than the presribed nkAbsTol "<<aTol<<endl;
             Info<<"NK completed!"<<endl;
             break;
         }
@@ -1401,30 +1400,6 @@ void ReducedOrderModeling::solveNK()
         {
             VecCopy(rVecReducedRef_,rVecReduced_);
             VecCopy(wVecReducedRef_,wVecReduced_);
-        }
-
-        // compute relative tol using EW
-        VecNorm(rVecReduced_,NORM_2,&rVecNorm);
-        if (iterI>1) rTol=0.1; //this->getEWTol(rVecNorm,rVecNormOld,rTolLast);
-        rVecNormOld=rVecNorm;
-        rTolLast=rTol;
-
-        if(iterI>1)
-        {
-            // check if we need to recompute PC
-            if(iterI%adjIO_.nkPCLag==0)
-            {
-                this->calcReducedJacobian(rdRdWPC); 
-                KSPDestroy(&ksp);
-                adjOptions.set("GMRESRelTol",rTol);
-                adjDev_.createMLRKSP(&ksp,rdRdW,rdRdWPC,adjOptions);
-            }
-            else
-            {
-                // we need to reassign the relative tolerance computed from EW
-                KSPSetTolerances(ksp,rTol,aTol,PETSC_DEFAULT,adjIO_.nkGMRESMaxIters);
-            }
-
         }
 
         // set up rGMRESHist to save the tolerance history for the GMRES solution
@@ -1477,10 +1452,6 @@ void ReducedOrderModeling::solveNK()
         }
 
         // print convergence info
-        if (iterI>1 && iterI%20==0)
-        {
-            this->printConvergenceInfo("printHeader",objFuncs);
-        }
         this->printConvergenceInfo
         (
             "printConvergence",
@@ -1497,17 +1468,14 @@ void ReducedOrderModeling::solveNK()
             totalResNorm
         );
 
-        // check if the presribed tolerances are met
-        if (Foam::mag(rVecNorm-rVecNormOld)/rVecNormOld<adjIO_.nkSTol)
+        if (debugMode)
         {
-            Info<<"S Tolerance "<<Foam::mag(rVecNorm-rVecNormOld)/rVecNormOld<<" less than the presribed nkSTol "<<adjIO_.nkSTol<<endl;
-            Info<<"NK completed!"<<endl;
-            break;
-        }
-        if (linRes>0.999)
-        {
-            Info<<"GMRES residual drop "<<linRes<<" too small! Quit! "<<endl;
-            break;
+            std::ostringstream nn("");
+            nn<<iterI;
+            std::string name1="rVecReducedRef_"+nn.str();
+            std::string name2="wVecReducedRef_"+nn.str();
+            adjIO_.writeVectorASCII(rVecReducedRef_,name1);
+            adjIO_.writeVectorASCII(wVecReducedRef_,name2);
         }
 
     }
@@ -1516,11 +1484,11 @@ void ReducedOrderModeling::solveNK()
     VecZeroEntries(wVecFull_);
     MatMult(svdPhiWMat_,wVecReducedRef_,wVecFull_);
     this->NKSetVecs(wVecFull_,"Vec2Var",1.0,"");
-
-    adjDev_.calcFlowResidualStatistics("print");
-
     adjObj_.writeObjFuncValues();
     this->writeNewField("ROM");
+
+    //adjDev_.calcFlowResidualStatistics("print");
+    
 }
 
 
@@ -2064,7 +2032,7 @@ void ReducedOrderModeling::printConvergenceInfo
         }
         printInfo += "\n";
 
-        printInfo +=   "| Iter | Eval | Type |        |   Res   |         |   (s)       |  (Turb)    |  (Phi)     |  (Total)   |";
+        printInfo +=   "| Iter | Eval | Type |        |   Res   |         |   (s)       |  (Turb)    |  (Full)    |  (Reduced) |";
         forAll(objFuncs.toc(),idxI)
         {
             word key = objFuncs.toc()[idxI];
@@ -2090,7 +2058,7 @@ void ReducedOrderModeling::printConvergenceInfo
         PetscPrintf
         (
             PETSC_COMM_WORLD,
-            " %6d %6d %s  %.4f   %.5f   %.2e   %.4e   %.4e   %.4e   %.4e",
+            " %6d %6d %s  %.4f   %.1e   %.2e   %.4e   %.4e   %.4e   %.4e",
             mainIter,
             nFuncEval,
             solverType.c_str(),

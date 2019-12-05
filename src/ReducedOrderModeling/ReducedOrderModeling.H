@@ -278,6 +278,8 @@ public:
     label checkNegativeTurb();
     scalar getResNorm(word mode);
 
+    void calcdRdWPhiMF(Mat dRdWPhi);
+
 
 };
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
