@@ -95,6 +95,7 @@ ReducedOrderModeling::ReducedOrderModeling
     useMF                     = readOptionOrDefault<label>(romDict_,"useMF",1);
     debugMode                 = readOptionOrDefault<label>(romDict_,"debugMode",0);
     mfStep                    = readOptionOrDefault<scalar>(romDict_,"mfStep",1e-8);
+    romSolveTol               = readOptionOrDefault<scalar>(romDict_,"romSolveTol",1e-8);
 
     // print all the parameters to screen    
     Info<<"ROM Parameters"<<romParameters_<<endl;
@@ -193,24 +194,38 @@ void ReducedOrderModeling::initializeOnlineNonlinear()
     VecSetFromOptions(wVecFull_);
     VecZeroEntries(wVecFull_);
 
-    VecDuplicate(wVecFull_,&wVecFullRef_);
     VecDuplicate(wVecFull_,&rVecFull_);
-    VecDuplicate(wVecFull_,&rVecFullRef_);
-    VecZeroEntries(wVecFullRef_);
     VecZeroEntries(rVecFull_);
-    VecZeroEntries(rVecFullRef_);
 
     VecCreate(PETSC_COMM_WORLD,&wVecReduced_);
     VecSetSizes(wVecReduced_,PETSC_DECIDE,nSamples);
     VecSetFromOptions(wVecReduced_);
     VecZeroEntries(wVecReduced_);
 
-    VecDuplicate(wVecReduced_,&wVecReducedRef_);
     VecDuplicate(wVecReduced_,&rVecReduced_);
-    VecDuplicate(wVecReduced_,&rVecReducedRef_);
-    VecZeroEntries(wVecReducedRef_);
     VecZeroEntries(rVecReduced_);
-    VecZeroEntries(rVecReducedRef_);
+
+}
+
+
+void ReducedOrderModeling::initializeOfflineNonlinear()
+{
+
+    VecCreate(PETSC_COMM_WORLD,&wVecFull_);
+    VecSetSizes(wVecFull_,localSize_,PETSC_DECIDE);
+    VecSetFromOptions(wVecFull_);
+    VecZeroEntries(wVecFull_);
+
+    VecDuplicate(wVecFull_,&rVecFull_);
+    VecZeroEntries(rVecFull_);
+
+    VecCreate(PETSC_COMM_WORLD,&wVecReduced_);
+    VecSetSizes(wVecReduced_,PETSC_DECIDE,nSamples);
+    VecSetFromOptions(wVecReduced_);
+    VecZeroEntries(wVecReduced_);
+
+    VecDuplicate(wVecReduced_,&rVecReduced_);
+    VecZeroEntries(rVecReduced_);
 
 }
 
@@ -709,6 +724,8 @@ void ReducedOrderModeling::solveSVD(Mat snapshotMat, Mat phiMat, word phiMatName
 
 void ReducedOrderModeling::solveOfflineNonlinear()
 {
+    this->initializeOfflineNonlinear();
+
     // save the unperturb residual statistics as reference
     // we will verify against this reference to ensure consistent residuals after perturbing
     // and resetting states
@@ -725,6 +742,14 @@ void ReducedOrderModeling::solveOfflineNonlinear()
     this->solveSVD(wSnapshotMat_,svdPhiWMat_,"svdPhiWMat");
 
     this->solveSVD(rSnapshotMat_,svdPhiRMat_,"svdPhiRMat");
+
+    // initialize and calculate rdRdWPC
+    Mat rdRdWPC;
+    this->initializeReducedJacobian(&rdRdWPC);
+    // save the unperturb residual statistics as reference
+    this->calcReducedJacobian(rdRdWPC); 
+    if (debugMode) adjIO_.writeMatrixASCII(rdRdWPC,"rdRdWPC");
+    adjIO_.writeMatrixBinary(rdRdWPC,"rdRdWPC");
 }
 
 void ReducedOrderModeling::solveOfflineLinear()
@@ -974,6 +999,7 @@ void ReducedOrderModeling::setdRdWPhiMat(Mat matIn,label n)
 
 void ReducedOrderModeling::calcdRdWPhiMF(Mat dRdWPhi)
 {
+    MatZeroEntries(dRdWPhi);
     // compute dRdW*phi
     // do matrix-free for dRdW*Phi = [ R(w+v*mfSetp) - R(w) ] / mfStep
     label isRef=1, isPC=0;
@@ -1010,7 +1036,6 @@ void ReducedOrderModeling::calcReducedMatsMF()
     MatMPIAIJSetPreallocation(dRdWPhi,nSamples,NULL,nSamples,NULL);
     MatSeqAIJSetPreallocation(dRdWPhi,nSamples,NULL);
     MatSetUp(dRdWPhi);
-    MatZeroEntries(dRdWPhi);
 
     this->calcdRdWPhiMF(dRdWPhi);
 
@@ -1302,7 +1327,7 @@ void ReducedOrderModeling::solveNK()
     // EW parameters
     scalar rVecNorm;
     scalar rTol=1.0e-2;
-    scalar aTol=1.0e-12;
+    scalar aTol=romSolveTol;
     // reduced Jacobians
     Mat rdRdW,rdRdWPC;
     // total residual norm including all variables
@@ -1321,19 +1346,19 @@ void ReducedOrderModeling::solveNK()
     // save the unperturb residual statistics as reference
     // we will verify against this reference to ensure consistent residuals after perturbing
     // and resetting states
-    //adjDev_.calcFlowResidualStatistics("set");
-    //adjDev_.calcFlowResidualStatistics("print");
-    this->calcReducedJacobian(rdRdWPC); 
-    adjIO_.writeMatrixASCII(rdRdWPC,"rdRdWPC");
-    adjIO_.writeMatrixBinary(rdRdWPC,"rdRdWPC");
+    adjDev_.calcFlowResidualStatistics("set");
+    adjDev_.calcFlowResidualStatistics("print");
+    //this->calcReducedJacobian(rdRdWPC); 
+    //if (debugMode) adjIO_.writeMatrixASCII(rdRdWPC,"rdRdWPC");
+    adjIO_.readMatrixBinary(rdRdWPC,"rdRdWPC");
 
     // first compute/assign the initial wVec and rVec and compute the initial totalResNorm0
     VecZeroEntries(wVecReduced_);
-    VecZeroEntries(wVecReducedRef_);
     VecZeroEntries(rVecReduced_);  
-    VecZeroEntries(rVecReducedRef_);
+    VecZeroEntries(wVecFull_);  
+    this->NKSetVecs(wVecFull_,"Var2Vec",1.0,"");
+    MatMultTranspose(svdPhiWMat_,wVecFull_,wVecReduced_);
     this->NKCalcResidualsReduced(wVecReduced_,rVecReduced_);
-    this->NKCalcResidualsReduced(wVecReduced_,rVecReducedRef_);
 
     // compute the initial norm
     VecNorm(rVecReduced_,NORM_2,&totalResNorm0);
@@ -1395,13 +1420,6 @@ void ReducedOrderModeling::solveNK()
             break;
         }
 
-        // update the w and v vectors
-        if (iterI>1) 
-        {
-            VecCopy(rVecReducedRef_,rVecReduced_);
-            VecCopy(wVecReducedRef_,wVecReduced_);
-        }
-
         // set up rGMRESHist to save the tolerance history for the GMRES solution
         KSPSetResidualHistory(ksp,rGMRESHist,nGMRESIters,PETSC_TRUE);
 
@@ -1432,12 +1450,17 @@ void ReducedOrderModeling::solveNK()
         scalar linRes=rGMRESHist[GMRESIters]/rGMRESHist[0];
 
         // do a line search and update states
-        VecZeroEntries(rVecReducedRef_);
-        VecZeroEntries(wVecReducedRef_);
-        scalar stepSize=this->NKLineSearchNew(wVecReduced_,rVecReduced_,dWVecReduced,wVecReducedRef_,rVecReducedRef_);
+        Vec rVecReducedNew,wVecReducedNew;
+        VecDuplicate(rVecReduced_,&rVecReducedNew);
+        VecDuplicate(wVecReduced_,&wVecReducedNew);
+        VecZeroEntries(rVecReducedNew);
+        VecZeroEntries(wVecReducedNew);
+        scalar stepSize=this->NKLineSearchNew(wVecReduced_,rVecReduced_,dWVecReduced,wVecReducedNew,rVecReducedNew);
+        VecCopy(rVecReducedNew,rVecReduced_);
+        VecCopy(wVecReducedNew,wVecReduced_);
 
         // update the norm for printting convergence info
-        VecNorm(rVecReducedRef_,NORM_2,&rVecNorm);
+        VecNorm(rVecReduced_,NORM_2,&rVecNorm);
         totalResNorm=rVecNorm;
         scalar totalResNormFull=this->getResNorm("total");
         scalar turbResNormFull=this->getResNorm("turb");
@@ -1472,22 +1495,26 @@ void ReducedOrderModeling::solveNK()
         {
             std::ostringstream nn("");
             nn<<iterI;
-            std::string name1="rVecReducedRef_"+nn.str();
-            std::string name2="wVecReducedRef_"+nn.str();
-            adjIO_.writeVectorASCII(rVecReducedRef_,name1);
-            adjIO_.writeVectorASCII(wVecReducedRef_,name2);
+            std::string name1="rVecReduced_"+nn.str();
+            std::string name2="wVecReduced_"+nn.str();
+            std::string name3="rVecFull_"+nn.str();
+            std::string name4="wVecFull_"+nn.str();
+            adjIO_.writeVectorASCII(rVecReduced_,name1);
+            adjIO_.writeVectorASCII(wVecReduced_,name2);
+            adjIO_.writeVectorASCII(rVecFull_,name3);
+            adjIO_.writeVectorASCII(wVecFull_,name4);
         }
 
     }
 
     // assign the latest wVec to variables
     VecZeroEntries(wVecFull_);
-    MatMult(svdPhiWMat_,wVecReducedRef_,wVecFull_);
+    MatMult(svdPhiWMat_,wVecReduced_,wVecFull_);
     this->NKSetVecs(wVecFull_,"Vec2Var",1.0,"");
     adjObj_.writeObjFuncValues();
     this->writeNewField("ROM");
 
-    //adjDev_.calcFlowResidualStatistics("print");
+    adjDev_.calcFlowResidualStatistics("print");
     
 }
 
@@ -1636,16 +1663,24 @@ void ReducedOrderModeling::calcReducedJacobian(Mat matIn)
     PetscInt Istart, Iend;
     MatGetOwnershipRange(matIn,&Istart,&Iend);
 
-    // comptue wVecFullRef_ and rVecFullRef_
+    // comptue wVecFullRef and rVecFullRef
     // assign the current reference states from OpenFOAM to wVecFull_
-    VecZeroEntries(wVecFullRef_);
-    this->NKSetVecs(wVecFullRef_,"Var2Vec",1.0,"");
-    // compute the referene full residual rVecFull_
-    VecZeroEntries(rVecFullRef_);
-    this->NKCalcResidualsFull(wVecFullRef_,rVecFullRef_);
-    // then compute rVecReducedRef_
-    VecZeroEntries(rVecReducedRef_);
-    MatMultTranspose(svdPhiRMat_,rVecFullRef_,rVecReducedRef_);
+    Vec wVecFullRef;
+    VecDuplicate(wVecFull_,&wVecFullRef);
+    VecZeroEntries(wVecFullRef);
+    this->NKSetVecs(wVecFullRef,"Var2Vec",1.0,"");
+    // compute the referene full residual rVecFull
+    Vec rVecFullRef;
+    VecDuplicate(rVecFull_,&rVecFullRef);
+    VecZeroEntries(rVecFullRef);
+    this->NKCalcResidualsFull(wVecFullRef,rVecFullRef);
+    // then compute rVecReducedRef
+    Vec rVecReducedRef;
+    VecDuplicate(rVecReduced_,&rVecReducedRef);
+    VecZeroEntries(rVecReducedRef);
+    //this->calcdRdWPhiMF(dRdWPhi_);
+    //MatMultTranspose(dRdWPhi_,rVecFullRef,rVecReducedRef);
+    MatMultTranspose(svdPhiRMat_,rVecFullRef,rVecReducedRef);
 
     Vec wVecReducedDelta, wVecFullDelta;
     VecDuplicate(wVecReduced_,&wVecReducedDelta);
@@ -1669,7 +1704,7 @@ void ReducedOrderModeling::calcReducedJacobian(Mat matIn)
 
         // now the new wVecFull=wVecFull+wVecFullDelta
         VecZeroEntries(wVecFull_);
-        VecWAXPY(wVecFull_,1.0,wVecFullRef_,wVecFullDelta);
+        VecWAXPY(wVecFull_,1.0,wVecFullRef,wVecFullDelta);
 
         // compute the perturbed full residual
         VecZeroEntries(rVecFull_);
@@ -1677,10 +1712,12 @@ void ReducedOrderModeling::calcReducedJacobian(Mat matIn)
 
         // then compute rVecReduced_
         VecZeroEntries(rVecReduced_);
+        //this->calcdRdWPhiMF(dRdWPhi_);
+        //MatMultTranspose(dRdWPhi_,rVecFull_,rVecReduced_);
         MatMultTranspose(svdPhiRMat_,rVecFull_,rVecReduced_);
 
-        // now we know rVecReducedRef_ and rVecReduced_, we can use FD to compute partials
-        VecAXPY(rVecReduced_,-1.0,rVecReducedRef_);
+        // now we know rVecReducedRef and rVecReduced_, we can use FD to compute partials
+        VecAXPY(rVecReduced_,-1.0,rVecReducedRef);
         VecScale(rVecReduced_,1.0/deltaVal);
         // assign it to matIn
         scalar vecVal;
@@ -1732,6 +1769,8 @@ void ReducedOrderModeling::NKCalcResidualsReduced(Vec wVec,Vec rVec)
     // Given an input vec wVec, calculate the function vec rWec
     // wVec: vector storing all the states
     // rVec: vector storing the residuals
+
+    // NOTE: the reduced residual is   Phi^T * R = 0
     
     // first compute the full length state vector from the reduced state vector
     VecZeroEntries(wVecFull_);
@@ -1752,6 +1791,8 @@ void ReducedOrderModeling::NKCalcResidualsReduced(Vec wVec,Vec rVec)
 
     // convert the full length residual to the reduced residual vector
     VecZeroEntries(rVec);
+    //this->calcdRdWPhiMF(dRdWPhi_);
+    //MatMultTranspose(dRdWPhi_,rVecFull_,rVec);
     MatMultTranspose(svdPhiRMat_,rVecFull_,rVec);
 
     return;
@@ -1987,6 +2028,7 @@ void ReducedOrderModeling::NKSetVecs
 
     if(mode == "Vec2Var" or mode == "VecAdd2Var")
     {
+        adjDev_.copyStates("Var2Ref"); // need to update the reference states as well
         adjDev_.updateStateVariableBCs();
     }
     

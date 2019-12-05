@@ -106,10 +106,10 @@ protected:
     Vec deltaFFDVec_;
 
     /// full and reduced  state vector
-    Vec wVecFull_, wVecFullRef_, wVecReduced_,wVecReducedRef_;;
+    Vec wVecFull_, wVecReduced_;
 
     /// full and reduced residual vector
-    Vec rVecFull_, rVecFullRef_, rVecReduced_, rVecReducedRef_;
+    Vec rVecFull_, rVecReduced_;
 
     /// number of FFD points or design variables
     label nFFDs_;
@@ -168,6 +168,9 @@ public:
     /// whether to use the debug mode where we output some vecs and matc
     label debugMode;
 
+    /// NK solution absolute tolerance for nonlinear ROM
+    scalar romSolveTol;
+
     /// initialize snapshot matrix
     void initializeSnapshotMat();
 
@@ -209,6 +212,9 @@ public:
 
     /// initialize onlineROM
     void initializeOnlineLinear();
+
+    /// initialize offlineROM
+    void initializeOfflineNonlinear();
 
     /// initialize onlineROM
     void initializeOnlineNonlinear();
