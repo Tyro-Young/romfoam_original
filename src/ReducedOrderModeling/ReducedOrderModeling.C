@@ -94,8 +94,9 @@ ReducedOrderModeling::ReducedOrderModeling
     svdRequestedN             = readOptionOrDefault<label>(romDict_,"svdRequestedN",1);
     useMF                     = readOptionOrDefault<label>(romDict_,"useMF",1);
     debugMode                 = readOptionOrDefault<label>(romDict_,"debugMode",0);
-    mfStep                    = readOptionOrDefault<scalar>(romDict_,"mfStep",1e-8);
-    romSolveTol               = readOptionOrDefault<scalar>(romDict_,"romSolveTol",1e-8);
+    mfStep                    = readOptionOrDefault<scalar>(romDict_,"mfStep",1e-6);
+    romNKAbsTol               = readOptionOrDefault<scalar>(romDict_,"romNKAbsTol",1e-8);
+    useLSPG                   = readOptionOrDefault<label>(romDict_,"useLSPG",0);
 
     // print all the parameters to screen    
     Info<<"ROM Parameters"<<romParameters_<<endl;
@@ -150,6 +151,13 @@ void ReducedOrderModeling::initializeOnlineLinear()
 
     if(debugMode) adjIO_.writeVectorASCII(deltaFFDVec_,"deltaFFDVec");
 
+    MatCreate(PETSC_COMM_WORLD,&dRdWPhi_);
+    MatSetSizes(dRdWPhi_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
+    MatSetFromOptions(dRdWPhi_);
+    MatMPIAIJSetPreallocation(dRdWPhi_,nSamples,NULL,nSamples,NULL);
+    MatSeqAIJSetPreallocation(dRdWPhi_,nSamples,NULL);
+    MatSetUp(dRdWPhi_);
+
 }
 
 void ReducedOrderModeling::initializeOnlineNonlinear()
@@ -164,12 +172,14 @@ void ReducedOrderModeling::initializeOnlineNonlinear()
     std::string fNamePhi="svdPhiWMat_"+np.str();
     adjIO_.readMatrixBinary(svdPhiWMat_,fNamePhi);
 
-    // read svdPhiRMat
-    std::ostringstream npR("");
-    npR<<nProcs;
-    std::string fNamePhiR="svdPhiRMat_"+npR.str();
-    adjIO_.readMatrixBinary(svdPhiRMat_,fNamePhiR);
-
+    if(useLSPG==0)
+    {
+        // read svdPhiRMat
+        std::ostringstream npR("");
+        npR<<nProcs;
+        std::string fNamePhiR="svdPhiRMat_"+npR.str();
+        adjIO_.readMatrixBinary(svdPhiRMat_,fNamePhiR);
+    }
     
     VecCreate(PETSC_COMM_WORLD,&deltaFFDVec_);
     VecSetSizes(deltaFFDVec_,PETSC_DECIDE,nFFDs_);
@@ -205,8 +215,24 @@ void ReducedOrderModeling::initializeOnlineNonlinear()
     VecDuplicate(wVecReduced_,&rVecReduced_);
     VecZeroEntries(rVecReduced_);
 
+    MatCreate(PETSC_COMM_WORLD,&dRdWPhi_);
+    MatSetSizes(dRdWPhi_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
+    MatSetFromOptions(dRdWPhi_);
+    MatMPIAIJSetPreallocation(dRdWPhi_,nSamples,NULL,nSamples,NULL);
+    MatSeqAIJSetPreallocation(dRdWPhi_,nSamples,NULL);
+    MatSetUp(dRdWPhi_);
+
 }
 
+void ReducedOrderModeling::initializeOfflineLinear()
+{
+    MatCreate(PETSC_COMM_WORLD,&dRdWPhi_);
+    MatSetSizes(dRdWPhi_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
+    MatSetFromOptions(dRdWPhi_);
+    MatMPIAIJSetPreallocation(dRdWPhi_,nSamples,NULL,nSamples,NULL);
+    MatSeqAIJSetPreallocation(dRdWPhi_,nSamples,NULL);
+    MatSetUp(dRdWPhi_);
+}
 
 void ReducedOrderModeling::initializeOfflineNonlinear()
 {
@@ -227,6 +253,13 @@ void ReducedOrderModeling::initializeOfflineNonlinear()
     VecDuplicate(wVecReduced_,&rVecReduced_);
     VecZeroEntries(rVecReduced_);
 
+    MatCreate(PETSC_COMM_WORLD,&dRdWPhi_);
+    MatSetSizes(dRdWPhi_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
+    MatSetFromOptions(dRdWPhi_);
+    MatMPIAIJSetPreallocation(dRdWPhi_,nSamples,NULL,nSamples,NULL);
+    MatSeqAIJSetPreallocation(dRdWPhi_,nSamples,NULL);
+    MatSetUp(dRdWPhi_);
+
 }
 
 void ReducedOrderModeling::initializeSnapshotMat()
@@ -244,7 +277,7 @@ void ReducedOrderModeling::initializeSnapshotMat()
 
 
     // create rSnapshotMat_
-    if(mode_=="nonlinear")
+    if(mode_=="nonlinear" && useLSPG==0)
     {
         MatCreate(PETSC_COMM_WORLD,&rSnapshotMat_);
         MatSetSizes(rSnapshotMat_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
@@ -288,7 +321,7 @@ void ReducedOrderModeling::initializeSVDPhiMat()
     MatSetUp(svdPhiWMat_);
     Info<<"Phi matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
-    if(mode_=="nonlinear")
+    if(mode_=="nonlinear" && useLSPG==0)
     {
         Info<<"Initializing the Phi matrix for R. "<<runTime_.elapsedClockTime()<<" s"<<endl;
         // create svdPhiRMat_
@@ -483,7 +516,7 @@ void ReducedOrderModeling::setSnapshotMat()
 
     Info<<"The w snapshot matrix is set. "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
-    if(mode_=="nonlinear")
+    if(mode_=="nonlinear"  && useLSPG==0)
     {
         Info<<"Setting the r snapshot matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
@@ -741,7 +774,7 @@ void ReducedOrderModeling::solveOfflineNonlinear()
 
     this->solveSVD(wSnapshotMat_,svdPhiWMat_,"svdPhiWMat");
 
-    this->solveSVD(rSnapshotMat_,svdPhiRMat_,"svdPhiRMat");
+    if(useLSPG==0) this->solveSVD(rSnapshotMat_,svdPhiRMat_,"svdPhiRMat");
 
     // initialize and calculate rdRdWPC
     Mat rdRdWPC;
@@ -754,6 +787,8 @@ void ReducedOrderModeling::solveOfflineNonlinear()
 
 void ReducedOrderModeling::solveOfflineLinear()
 {
+
+    this->initializeOfflineLinear();
 
     // save the unperturb residual statistics as reference
     // we will verify against this reference to ensure consistent residuals after perturbing
@@ -816,12 +851,11 @@ void ReducedOrderModeling::solveOfflineLinear()
     
         adjCon_.deletedRdWCon();
     
-        //******************************** Compute dRdWReduced *****************************//
-        Mat dRdWPhiMat;    
+        //******************************** Compute dRdWReduced *****************************// 
         Info<< "Computing phiT*dRdW*phi" << endl;
         // now compute the matmat mult
-        MatMatMult(dRdW_,svdPhiWMat_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWPhiMat);
-        MatTransposeMatMult(svdPhiWMat_,dRdWPhiMat,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
+        MatMatMult(dRdW_,svdPhiWMat_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWPhi_);
+        MatTransposeMatMult(svdPhiWMat_,dRdWPhi_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
     
         MatDestroy(&dRdW_);
     
@@ -1006,6 +1040,7 @@ void ReducedOrderModeling::calcdRdWPhiMF(Mat dRdWPhi)
     adjDev_.copyStates("Ref2Var");
     adjDev_.calcResiduals(isRef,isPC);
     adjRAS_.calcTurbResiduals(isRef,isPC);
+    nFuncEvals_++;
     for(label nn=0;nn<nSamples;nn++)
     {
         this->perturbStatesMF(nn);
@@ -1029,22 +1064,15 @@ void ReducedOrderModeling::calcReducedMatsMF()
     // ********************** Ar *********************
     // first compute dRdW*phi
     Info<<"Computing dRdW*Phi..."<<endl;
-    Mat dRdWPhi;
-    MatCreate(PETSC_COMM_WORLD,&dRdWPhi);
-    MatSetSizes(dRdWPhi,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
-    MatSetFromOptions(dRdWPhi);
-    MatMPIAIJSetPreallocation(dRdWPhi,nSamples,NULL,nSamples,NULL);
-    MatSeqAIJSetPreallocation(dRdWPhi,nSamples,NULL);
-    MatSetUp(dRdWPhi);
 
-    this->calcdRdWPhiMF(dRdWPhi);
+    this->calcdRdWPhiMF(dRdWPhi_);
 
     adjDev_.calcFlowResidualStatistics("verify");
 
     if(debugMode) 
     {
-        adjIO_.writeMatrixASCII(dRdWPhi,"dRdWPhi");
-        adjIO_.writeMatrixBinary(dRdWPhi,"dRdWPhi");
+        adjIO_.writeMatrixASCII(dRdWPhi_,"dRdWPhi");
+        adjIO_.writeMatrixBinary(dRdWPhi_,"dRdWPhi");
     }
 
     // now compute phiT*dRdW*Phi
@@ -1052,7 +1080,7 @@ void ReducedOrderModeling::calcReducedMatsMF()
     //MatCreateTranspose(svdPhiWMat_,&phiT);
     void initializedRdWMatReduced();
     Info<< "Computing phiT*dRdW*phi" << endl;
-    MatTransposeMatMult(svdPhiWMat_,dRdWPhi,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
+    MatTransposeMatMult(svdPhiWMat_,dRdWPhi_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&dRdWReduced_);
 
     // ********************** Br *********************
     Info<<"Calculating dRdFFD... "<<endl;
@@ -1327,7 +1355,7 @@ void ReducedOrderModeling::solveNK()
     // EW parameters
     scalar rVecNorm;
     scalar rTol=1.0e-2;
-    scalar aTol=romSolveTol;
+    scalar aTol=romNKAbsTol;
     // reduced Jacobians
     Mat rdRdW,rdRdWPC;
     // total residual norm including all variables
@@ -1551,7 +1579,6 @@ scalar ReducedOrderModeling::NKLineSearchNew
 
         // using the current state to compute rVecNew
         this->NKCalcResidualsReduced(wVecNew,rVecNew);
-        nFuncEvals_++;
 
         // compute the rVecNorm at new w
         ierr=VecNorm(rVecNew,NORM_2,&rVecNewNorm);
@@ -1678,10 +1705,16 @@ void ReducedOrderModeling::calcReducedJacobian(Mat matIn)
     Vec rVecReducedRef;
     VecDuplicate(rVecReduced_,&rVecReducedRef);
     VecZeroEntries(rVecReducedRef);
-    //this->calcdRdWPhiMF(dRdWPhi_);
-    //MatMultTranspose(dRdWPhi_,rVecFullRef,rVecReducedRef);
-    MatMultTranspose(svdPhiRMat_,rVecFullRef,rVecReducedRef);
-
+    if(useLSPG)
+    {
+        this->calcdRdWPhiMF(dRdWPhi_);
+        MatMultTranspose(dRdWPhi_,rVecFullRef,rVecReducedRef);
+    }
+    else
+    {
+        MatMultTranspose(svdPhiRMat_,rVecFullRef,rVecReducedRef);
+    }
+    
     Vec wVecReducedDelta, wVecFullDelta;
     VecDuplicate(wVecReduced_,&wVecReducedDelta);
     VecDuplicate(wVecFull_,&wVecFullDelta);
@@ -1712,10 +1745,16 @@ void ReducedOrderModeling::calcReducedJacobian(Mat matIn)
 
         // then compute rVecReduced_
         VecZeroEntries(rVecReduced_);
-        //this->calcdRdWPhiMF(dRdWPhi_);
-        //MatMultTranspose(dRdWPhi_,rVecFull_,rVecReduced_);
-        MatMultTranspose(svdPhiRMat_,rVecFull_,rVecReduced_);
-
+        if(useLSPG)
+        {
+            this->calcdRdWPhiMF(dRdWPhi_);
+            MatMultTranspose(dRdWPhi_,rVecFull_,rVecReduced_);
+        }
+        else
+        {
+            MatMultTranspose(svdPhiRMat_,rVecFull_,rVecReduced_);
+        }
+        
         // now we know rVecReducedRef and rVecReduced_, we can use FD to compute partials
         VecAXPY(rVecReduced_,-1.0,rVecReducedRef);
         VecScale(rVecReduced_,1.0/deltaVal);
@@ -1784,6 +1823,7 @@ void ReducedOrderModeling::NKCalcResidualsReduced(Vec wVec,Vec rVec)
     adjDev_.updateStateVariableBCs();
     adjDev_.calcResiduals(isRef,isPC);
     adjRAS_.calcTurbResiduals(isRef,isPC);
+    nFuncEvals_++;
 
     // assign the OpenFOAM field variables back to vVecFull_
     VecZeroEntries(rVecFull_);
@@ -1791,10 +1831,16 @@ void ReducedOrderModeling::NKCalcResidualsReduced(Vec wVec,Vec rVec)
 
     // convert the full length residual to the reduced residual vector
     VecZeroEntries(rVec);
-    //this->calcdRdWPhiMF(dRdWPhi_);
-    //MatMultTranspose(dRdWPhi_,rVecFull_,rVec);
-    MatMultTranspose(svdPhiRMat_,rVecFull_,rVec);
-
+    if(useLSPG)
+    {
+        this->calcdRdWPhiMF(dRdWPhi_);
+        MatMultTranspose(dRdWPhi_,rVecFull_,rVec);
+    }
+    else
+    {
+        MatMultTranspose(svdPhiRMat_,rVecFull_,rVec);
+    }
+    
     return;
 
 }
@@ -1813,6 +1859,7 @@ void ReducedOrderModeling::NKCalcResidualsFull(Vec wVec,Vec rVec)
     adjDev_.updateStateVariableBCs();
     adjDev_.calcResiduals(isRef,isPC);
     adjRAS_.calcTurbResiduals(isRef,isPC);
+    nFuncEvals_++;
 
     // assign the OpenFOAM field variables back to vVecFull_
     VecZeroEntries(rVec);

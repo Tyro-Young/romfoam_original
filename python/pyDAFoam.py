@@ -173,6 +173,7 @@ class PYDAFOAM(AeroSolver):
         # write a basic control and fvAdjoint file
         self._writeControlDictFile()
         self._writeAdjointDictFile()
+        self._writeROMDictFile()
          
         # Misc setup, e.g., copy points to points_orig for the first run
         # decompose the domain if running in parallel, running genFaceCenters and genWallFaces etc.
@@ -1024,6 +1025,19 @@ class PYDAFOAM(AeroSolver):
                     'nkmaxiters':[int,100],
                     'nkmaxfuncevals':[int,10000],
 
+                    # romDict
+                    'nsamples':[int,0],
+                    'deltaffd':[list,[]],
+                    'svdtype':[str,'cross'],
+                    'svdtol':[float,1e-8],
+                    'svdmaxits':[int,100],
+                    'svdrequestedn':[int,0],
+                    'usemf':[int,1],
+                    'mfstep':[float,1e-6],
+                    'debugmode':[int,0],
+                    'uselspg':[int,0],
+                    'romnkabstol':[float,1e-8],
+
                     
                     # objectiveFunctionOptions
                     'objfuncgeoinfo':[list,[['wall'],['wall']]], # objfuncgeoinfo is a listlist
@@ -1155,6 +1169,7 @@ class PYDAFOAM(AeroSolver):
         self._writeControlDictFile()
         self._writeFvSchemesFile()
         self._writeFvSolutionFile()
+        self._writeROMDictFile()
         
         self.comm.Barrier()
 
@@ -1297,6 +1312,7 @@ class PYDAFOAM(AeroSolver):
         self._writeControlDictFile()
         self._writeFvSchemesFile()
         self._writeFvSolutionFile()
+        self._writeROMDictFile()
         self.comm.Barrier()
         
         logFileName = 'adjointLog'
@@ -1975,6 +1991,7 @@ class PYDAFOAM(AeroSolver):
         self._writeControlDictFile()
         self._writeFvSchemesFile()
         self._writeFvSolutionFile()
+        self._writeROMDictFile()
         self.comm.Barrier()
 
         if  self.parallel and mpiSpawnRun:
@@ -5349,6 +5366,61 @@ class PYDAFOAM(AeroSolver):
 
             f.write('\n')
             
+            f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
+
+            f.close()
+        return
+    def _writeROMDictFile(self):
+        '''
+        Write out the romDict file.
+        
+        This will overwrite whateverfile is present so that the solve is completed
+        with the currently specified options.
+        '''
+        if self.comm.rank==0:
+            # Open the options file for writing
+            workingDirectory = os.getcwd()  
+            sysDir = 'system'
+            varDir = os.path.join(workingDirectory,sysDir)
+            fileName = 'romDict'
+            fileLoc = os.path.join(varDir, fileName)
+            f = open(fileLoc, 'w')
+
+            # write the file header
+            f.write('/*--------------------------------*- C++ -*---------------------------------*\ \n')
+            f.write('| ========                 |                                                 | \n')
+            f.write('| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           | \n')
+            f.write('|  \\    /   O peration     | Version:  v1812                                 | \n')
+            f.write('|   \\  /    A nd           | Web:      www.OpenFOAM.com                      | \n')
+            f.write('|    \\/     M anipulation  |                                                 | \n')
+            f.write('\*--------------------------------------------------------------------------*/ \n')
+            f.write('FoamFile\n')
+            f.write('{\n')
+            f.write('    version     2.0;\n')
+            f.write('    format      ascii;\n')
+            f.write('    class       dictionary;\n')
+            f.write('    location    "%s";\n'%sysDir)
+            f.write('    object      %s;\n'%fileName)
+            f.write('}\n')
+            f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
+            f.write('\n')
+
+            f.write('nSamples        %d;\n'%self.getOption('nsamples'))
+            f.write('deltaFFD        (')
+            for delta in self.getOption('deltaffd'):
+                f.write('%f '%delta)
+            f.write(');\n')
+            f.write('svdType         %s;\n'%self.getOption('svdtype'))
+            f.write('svdTol          %e;\n'%self.getOption('svdtol'))
+            f.write('svdMaxIts       %d;\n'%self.getOption('svdmaxits'))
+            f.write('svdRequestedN   %d;\n'%self.getOption('svdrequestedn'))
+            f.write('useMF           %d;\n'%self.getOption('usemf'))
+            f.write('debugMode       %d;\n'%self.getOption('debugmode'))
+            f.write('mfStep          %e;\n'%self.getOption('mfstep'))
+            f.write('romNKAbsTol     %e;\n'%self.getOption('romnkabstol'))
+            f.write('useLSPG         %d;\n'%self.getOption('uselspg'))
+            
+            f.write('\n')
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
 
             f.close()

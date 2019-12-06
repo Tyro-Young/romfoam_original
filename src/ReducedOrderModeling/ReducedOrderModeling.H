@@ -86,6 +86,9 @@ protected:
     
     /// partial R / partial W matrix
     Mat dRdW_;
+
+    /// dRdW*Phi
+    Mat dRdWPhi_;
     
     /// partial R / partial FFD matrix
     Mat dRdFFD_;
@@ -169,7 +172,10 @@ public:
     label debugMode;
 
     /// NK solution absolute tolerance for nonlinear ROM
-    scalar romSolveTol;
+    scalar romNKAbsTol;
+
+    /// whether to use Least-square Petrov-Galerkin projection formulation for nonlinearROM
+    label useLSPG;
 
     /// initialize snapshot matrix
     void initializeSnapshotMat();
@@ -212,6 +218,8 @@ public:
 
     /// initialize onlineROM
     void initializeOnlineLinear();
+
+    void initializeOfflineLinear();
 
     /// initialize offlineROM
     void initializeOfflineNonlinear();

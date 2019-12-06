@@ -113,17 +113,20 @@ else:
     print("mode should be either train or predict")
     exit(1)
 
+
 if args.mode=='predict':
     deltaDVs=DVs_Predict[sample]-DVs_Train[-1]
-    if gcomm.rank==0:
-        f=open('system/romDict','w')
-        f.write('FoamFile{version 2.0;format ascii;class dictionary;location %s;object adjointDict;}\n'%"system")
-        f.write('nSamples %d; deltaFFD (%s); svdType cross; svdTol 1e-8; svdMaxIts 100; svdRequestedN %d; useMF 1; mfStep 1e-6; debugMode 0;\n'%(args.nSamples,' '.join(map(str,deltaDVs)),args.nSamples))
+    deltaDVs=deltaDVs.tolist()
+    #if gcomm.rank==0:
+    #    f=open('system/romDict','w')
+    #    f.write('FoamFile{version 2.0;format ascii;class dictionary;location %s;object adjointDict;}\n'%"system")
+    #    f.write('nSamples %d; deltaFFD (%s); svdType cross; svdTol 1e-8; svdMaxIts 100; svdRequestedN %d; useMF 1; mfStep 1e-6; debugMode 0;\n'%(args.nSamples,' '.join(map(str,deltaDVs)),args.nSamples))
 elif args.mode=='train': 
-    if gcomm.rank==0:
-        f=open('system/romDict','w')
-        f.write('FoamFile{version 2.0;format ascii;class dictionary;location %s;object adjointDict;}\n'%"system")
-        f.write('nSamples %d; deltaFFD (1.0); svdType cross; svdTol 1e-8; svdMaxIts 100; svdRequestedN %d; useMF 1; mfStep 1e-6; debugMode 0;\n'%(args.nSamples,args.nSamples))
+    deltaDVs=[0.0]
+    #if gcomm.rank==0:
+    #    f=open('system/romDict','w')
+    #    f.write('FoamFile{version 2.0;format ascii;class dictionary;location %s;object adjointDict;}\n'%"system")
+    #    f.write('nSamples %d; deltaFFD (1.0); svdType cross; svdTol 1e-8; svdMaxIts 100; svdRequestedN %d; useMF 1; mfStep 1e-6; debugMode 0;\n'%(args.nSamples,args.nSamples))
 
 
 # Set the parameters for optimization
@@ -166,6 +169,19 @@ aeroOptions = {
                                 'beta':3e-3,
                                 'Pr':0.7,
                                 'Prt':0.85}, 
+
+    # romDict
+    'nsamples':args.nSamples,
+    'deltaffd':deltaDVs,
+    'svdtype':'cross',
+    'svdtol':1e-8,
+    'svdmaxits':100,
+    'svdrequestedn':args.nSamples,
+    'usemf':1,
+    'mfstep':1e-6,
+    'debugmode':0,
+    'uselspg':0,
+    'romnkabstol':1e-8,
 
     # adjoint setup
     'adjdvtypes':              ['FFD'], 
