@@ -24,7 +24,7 @@ libs
 );
 
 application     simpleROMFoam;
-startFrom       startTime;
+    startFrom       latestTime;
 startTime       0;
 stopAt          endTime;
 endTime         500;

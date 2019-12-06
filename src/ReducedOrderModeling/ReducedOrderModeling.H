@@ -174,6 +174,10 @@ public:
     /// NK solution absolute tolerance for nonlinear ROM
     scalar romNKAbsTol;
 
+    label romNKMaxIts;
+
+    scalar romNKGMRESRTol;
+
     /// whether to use Least-square Petrov-Galerkin projection formulation for nonlinearROM
     label useLSPG;
 
@@ -281,7 +285,7 @@ public:
 
     label nFuncEvals_=0;
 
-    scalar NKLineSearchNew
+    scalar NKLineSearch
     (
         const Vec wVec,
         const Vec rVec,

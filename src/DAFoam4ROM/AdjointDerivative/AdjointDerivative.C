@@ -3853,7 +3853,7 @@ PetscErrorCode AdjointDerivative::myKSPMonitor(KSP ksp,PetscInt n,PetscReal rnor
 
     AdjointDerivative *adjDev= (AdjointDerivative*) ctx;
 
-    PetscInt printFrequency = 10; // residual print frequency
+    PetscInt printFrequency = 1; // residual print frequency
     if (n%printFrequency==0)
     {
         PetscPrintf

@@ -25,6 +25,8 @@ useMF           1;
 debugMode       0;
 mfStep          1.000000e-06;
 romNKAbsTol     1.000000e-08;
+romNKGMRESRTol  1.000000e-02;
+romNKMaxIts     20;
 useLSPG         0;
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

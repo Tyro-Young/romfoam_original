@@ -96,7 +96,10 @@ ReducedOrderModeling::ReducedOrderModeling
     debugMode                 = readOptionOrDefault<label>(romDict_,"debugMode",0);
     mfStep                    = readOptionOrDefault<scalar>(romDict_,"mfStep",1e-6);
     romNKAbsTol               = readOptionOrDefault<scalar>(romDict_,"romNKAbsTol",1e-8);
+    romNKGMRESRTol            = readOptionOrDefault<scalar>(romDict_,"romNKGMRESRTol",1e-2);
+    romNKMaxIts               = readOptionOrDefault<label>(romDict_,"romNKMaxIts",20);
     useLSPG                   = readOptionOrDefault<label>(romDict_,"useLSPG",0);
+    
 
     // print all the parameters to screen    
     Info<<"ROM Parameters"<<romParameters_<<endl;
@@ -1354,8 +1357,8 @@ void ReducedOrderModeling::solveNK()
     label GMRESIters;
     // EW parameters
     scalar rVecNorm;
-    scalar rTol=1.0e-2;
-    scalar aTol=romNKAbsTol;
+    scalar rTol=romNKGMRESRTol;
+    scalar aTol=1.0e-12;
     // reduced Jacobians
     Mat rdRdW,rdRdWPC;
     // total residual norm including all variables
@@ -1438,12 +1441,18 @@ void ReducedOrderModeling::solveNK()
     );
 
     // main loop for NK
-    for(label iterI=1;iterI<100;iterI++)
+    Vec rVecReducedBase,rhs, dWVecReduced,rVecReducedNew,wVecReducedNew;
+    VecDuplicate(wVecReduced_,&dWVecReduced);
+    VecDuplicate(rVecReduced_,&rhs);
+    VecDuplicate(rVecReduced_,&rVecReducedBase);
+    VecDuplicate(rVecReduced_,&rVecReducedNew);
+    VecDuplicate(wVecReduced_,&wVecReducedNew);
+    for(label iterI=1;iterI<romNKMaxIts;iterI++)
     {
         // check if the presribed tolerances are met
-        if (totalResNorm<aTol)
+        if (totalResNorm<romNKAbsTol)
         {
-            Info<<"Absolute Tolerance "<<totalResNorm<<" less than the presribed nkAbsTol "<<aTol<<endl;
+            Info<<"Absolute Tolerance "<<totalResNorm<<" less than the presribed nkAbsTol "<<romNKAbsTol<<endl;
             Info<<"NK completed!"<<endl;
             break;
         }
@@ -1455,8 +1464,6 @@ void ReducedOrderModeling::solveNK()
         // Note: we need to apply normalize-states to the baseVector
         // Note that we also scale the dRdW*psi 
         // in AdjointNewtonKrylov::FormFunction
-        Vec rVecReducedBase;
-        VecDuplicate(rVecReduced_,&rVecReducedBase);
         VecCopy(rVecReduced_,rVecReducedBase); 
         //this->setNormalizeStatesScaling2Vec(rVecBase);
         MatMFFDSetBase(rdRdW,wVecReduced_,rVecReducedBase);
@@ -1466,24 +1473,17 @@ void ReducedOrderModeling::solveNK()
         // the states, so we create this temporary rhs vec to store 
         // the scaled rVec. Note that we also scale the dRdW*psi 
         // in AdjointNewtonKrylov::FormFunction
-        Vec rhs, dWVecReduced;
-        VecDuplicate(wVecReduced_,&dWVecReduced);
-        VecDuplicate(rVecReduced_,&rhs);
         VecCopy(rVecReduced_,rhs);
         KSPSolve(ksp,rhs,dWVecReduced);
 
         // get linear solution rTol: linRes
         KSPGetIterationNumber(ksp,&GMRESIters);
-        nFuncEvals_+=GMRESIters;
         scalar linRes=rGMRESHist[GMRESIters]/rGMRESHist[0];
 
         // do a line search and update states
-        Vec rVecReducedNew,wVecReducedNew;
-        VecDuplicate(rVecReduced_,&rVecReducedNew);
-        VecDuplicate(wVecReduced_,&wVecReducedNew);
         VecZeroEntries(rVecReducedNew);
         VecZeroEntries(wVecReducedNew);
-        scalar stepSize=this->NKLineSearchNew(wVecReduced_,rVecReduced_,dWVecReduced,wVecReducedNew,rVecReducedNew);
+        scalar stepSize=this->NKLineSearch(wVecReduced_,rVecReduced_,dWVecReduced,wVecReducedNew,rVecReducedNew);
         VecCopy(rVecReducedNew,rVecReduced_);
         VecCopy(wVecReducedNew,wVecReduced_);
 
@@ -1547,7 +1547,7 @@ void ReducedOrderModeling::solveNK()
 }
 
 
-scalar ReducedOrderModeling::NKLineSearchNew
+scalar ReducedOrderModeling::NKLineSearch
 (
     const Vec wVec,
     const Vec rVec,
@@ -1824,6 +1824,7 @@ void ReducedOrderModeling::NKCalcResidualsReduced(Vec wVec,Vec rVec)
     adjDev_.calcResiduals(isRef,isPC);
     adjRAS_.calcTurbResiduals(isRef,isPC);
     nFuncEvals_++;
+    //Info<<"Calling NKCalcResidualsReduced"<<endl;
 
     // assign the OpenFOAM field variables back to vVecFull_
     VecZeroEntries(rVecFull_);
@@ -1860,6 +1861,7 @@ void ReducedOrderModeling::NKCalcResidualsFull(Vec wVec,Vec rVec)
     adjDev_.calcResiduals(isRef,isPC);
     adjRAS_.calcTurbResiduals(isRef,isPC);
     nFuncEvals_++;
+    //Info<<"Calling NKCalcResidualsFull"<<endl;
 
     // assign the OpenFOAM field variables back to vVecFull_
     VecZeroEntries(rVec);
