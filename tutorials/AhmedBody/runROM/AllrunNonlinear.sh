@@ -4,9 +4,9 @@ exec=mpirun
 nProcs=1
 solver=simpleROMFoam
 runEndTime=500
-nSamples=20
+nSamples=5
 refSample=$nSamples
-nDVs=4
+nDVs=1
 predictSamples="1 2"
 
 ######################################################
@@ -44,8 +44,6 @@ for n in `seq 1 1 $nSamples`; do
   
 done
 
-$exec -np $nProcs python runFlow.py --task=writedelmat --sample=$nSamples --mode=train --nSamples=$nSamples
-sleep 3
 $exec -np $nProcs python runFlow.py --task=deform --sample=$nSamples --mode=train --nSamples=$nSamples
 sleep 3
 
@@ -64,31 +62,35 @@ else
   done
 fi
 
-sed -i "/solveAdjoint/c\    solveAdjoint           true;" system/adjointDict
-sed -i "/useColoring/c\    useColoring           true;" system/adjointDict
-sed -i "/nFFDPoints/c\    nFFDPoints           $nDVs;" system/adjointDict
 sed -i "/startFrom/c\    startFrom       latestTime;" system/controlDict
 
+# use the last sample field as ref
 if [ $nProcs -eq 1 ]; then
-  $solver -mode offlineLinear
+  $solver -mode offlineNonlinear
 else
-  $exec -np $nProcs $solver -mode offlineLinear -parallel
+  $exec -np $nProcs $solver -mode offlineNonlinear -parallel
 fi
 
 ######################################################
 # runOnline
 ######################################################
 
-# calc refFields
+# copy the last sample field to 0
+if [ $nProcs -gt 1 ]; then
+  ((nProcsM1=nProcs-1))
+  for n in `seq 0 1 $nProcsM1`; do
+    rm -rf processor${n}/0/*
+    cp -r processor${n}/$nSamples/* processor${n}/0/
+  done
+else
+  rm -rf 0/*
+  cp -r $nSamples/* 0/
+fi
+
+# now we can clear the samples
 rm -rf processor*
 rm -rf {1..100}
 killall -9 foamRun.sh
-./foamRun.sh $exec $nProcs $solver &
-sleep 3
-$exec -np $nProcs python runFlow.py --task=run --sample=$refSample --mode=train --nSamples=$nSamples
-killall -9 foamRun.sh
-sleep 3
-
 
 for n in $predictSamples; do
 
@@ -100,15 +102,13 @@ for n in $predictSamples; do
   $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=predict --nSamples=$nSamples
 
   # run ROM, output UROM variables
-  sed -i "/solveAdjoint/c\solveAdjoint           true;" system/adjointDict
-  sed -i "/useColoring/c\useColoring           true;" system/adjointDict
-  sed -i "/nFFDPoints/c\    nFFDPoints           $nDVs;" system/adjointDict
   sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
   if [ $nProcs -eq 1 ]; then
-    $solver -mode onlineLinear
+    $solver -mode onlineNonlinear
   else
-    $exec -np $nProcs $solver -mode onlineLinear -parallel
+    $exec -np $nProcs $solver -mode onlineNonlinear -parallel
   fi
+
 
   # now run the flow at the predict sample, overwrite the variable at refSample
   echo "Run the flow at sample = $n"

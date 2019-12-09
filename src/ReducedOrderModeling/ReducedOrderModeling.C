@@ -1712,7 +1712,8 @@ void ReducedOrderModeling::calcReducedJacobian(Mat matIn)
     }
     else
     {
-        MatMultTranspose(svdPhiRMat_,rVecFullRef,rVecReducedRef);
+        //MatMultTranspose(svdPhiRMat_,rVecFullRef,rVecReducedRef);
+        MatMultTranspose(svdPhiWMat_,rVecFullRef,rVecReducedRef);
     }
     
     Vec wVecReducedDelta, wVecFullDelta;
@@ -1752,7 +1753,8 @@ void ReducedOrderModeling::calcReducedJacobian(Mat matIn)
         }
         else
         {
-            MatMultTranspose(svdPhiRMat_,rVecFull_,rVecReduced_);
+            //MatMultTranspose(svdPhiRMat_,rVecFull_,rVecReduced_);
+            MatMultTranspose(svdPhiWMat_,rVecFull_,rVecReduced_);
         }
         
         // now we know rVecReducedRef and rVecReduced_, we can use FD to compute partials
@@ -1839,7 +1841,8 @@ void ReducedOrderModeling::NKCalcResidualsReduced(Vec wVec,Vec rVec)
     }
     else
     {
-        MatMultTranspose(svdPhiRMat_,rVecFull_,rVec);
+        //MatMultTranspose(svdPhiRMat_,rVecFull_,rVec);
+        MatMultTranspose(svdPhiWMat_,rVecFull_,rVec);
     }
     
     return;

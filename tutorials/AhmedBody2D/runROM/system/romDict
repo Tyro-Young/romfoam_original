@@ -1,2 +1,32 @@
-FoamFile{version 2.0;format ascii;class dictionary;location system;object adjointDict;}
-nSamples 10; deltaFFD (1.0); svdType cross; svdTol 1e-8; svdMaxIts 100; svdRequestedN 10; useMF 1; mfStep 1e-6; debugMode 0;
+/*--------------------------------*- C++ -*---------------------------------*\ 
+| ========                 |                                                 | 
+| \      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           | 
+|  \    /   O peration     | Version:  v1812                                 | 
+|   \  /    A nd           | Web:      www.OpenFOAM.com                      | 
+|    \/     M anipulation  |                                                 | 
+\*--------------------------------------------------------------------------*/ 
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      romDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+nSamples        10;
+deltaFFD        (0.000000 );
+svdType         cross;
+svdTol          1.000000e-08;
+svdMaxIts       100;
+svdRequestedN   10;
+useMF           1;
+debugMode       0;
+mfStep          1.000000e-06;
+romNKAbsTol     1.000000e-08;
+romNKGMRESRTol  1.000000e-02;
+romNKMaxIts     20;
+useLSPG         0;
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

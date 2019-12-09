@@ -53,7 +53,7 @@ adjointOptions
     useColoring            false;
     normalizeResiduals     (URes pRes nuTildaRes);
     normalizeStates        ();
-    nFFDPoints             4;
+    nFFDPoints             1;
     correctWallDist        true;
     reduceResCon4JacMat    false;
     calcPCMat              true;

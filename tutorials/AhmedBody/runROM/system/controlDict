@@ -23,7 +23,7 @@ libs
     "libSpalartAllmarasFv3Incompressible.so" 
 );
 
-application     simpleDAFoam;
+application     simpleROMFoam;
 startFrom       startTime;
 startTime       0;
 stopAt          endTime;
