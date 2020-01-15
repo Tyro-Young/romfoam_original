@@ -17,7 +17,7 @@ ROMFoam depends on multiple prerequisites, to install ROMFoam
  - Append the following to your $HOME/.bashrc file:
   
        # SLEPC
-       export SLEPC_DIR=/home/ping/packages/slepc-3.6.3
+       export SLEPC_DIR=$HOME/packages/slepc-3.6.3
        export SLEPC_ARCH=real-opt
        export PATH=$SLEPC_DIR/$SLEPC_ARCH/bin:$PATH
        export PATH=$SLEPC_DIR/$SLEPC_ARCH/include:$PATH
