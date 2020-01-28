@@ -49,7 +49,7 @@ if optVars[0]=='rampAngle':
                   [25.0],
                   [20.0]]
     DVs_Predict= [[15.0],
-                  [25.0]]
+                  [21.0]]
 elif optVars[0]=='rideHeight':
     # 5 samples, 1 DV
     DVs_Train=   [[0.03],
@@ -118,8 +118,7 @@ if args.mode=='predict':
     deltaDVs=DVs_Predict[sample]-DVs_Train[-1]
     deltaDVs=deltaDVs.tolist()
 elif args.mode=='train': 
-    if gcomm.rank==0:
-        deltaDVs=[0.0]
+    deltaDVs=[0.0]
 
 
 # Set the parameters for optimization
