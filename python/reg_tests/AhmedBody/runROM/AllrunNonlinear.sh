@@ -88,7 +88,7 @@ else
 fi
 
 # now we can clear the samples
-rm -rf processor*
+rm -rf processor*/{1..100}
 rm -rf {1..100}
 killall -9 foamRun.sh
 

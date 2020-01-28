@@ -23,11 +23,11 @@ from idwarp import *
 # =============================================================================
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", help='Output directory', type=str,default='../output')
-parser.add_argument("--opt", help="optimizer to use", type=str, default='slsqp')
 parser.add_argument("--task", help="type of run to do", type=str, default='run')
 parser.add_argument('--optVars',type=str,help='Vars for the optimizer',default="['rampAngle']")
 parser.add_argument('--sample',type=int,help='which sample DV to run',default=1)
 parser.add_argument('--mode',type=str,help='can be either train or predict',default='train')
+parser.add_argument('--runEndTime',type=int,help='number of time steps for flow',default=500)
 parser.add_argument('--nSamples',type=int,help='number of samples',default=1)
 args = parser.parse_args()
 exec('optVars=%s'%args.optVars)
@@ -73,7 +73,6 @@ elif optVars[0]=='rampAngleAndRideHeight':
                   [24.9,0.051]]
     DVs_Predict= [[25.7,0.043],
                   [24.1,0.045]]
-
 elif optVars[0]=='shape':
     # 20 samples, 4 DVs
     DVs_Train=   [[0.00625,0.04625,0.04875,0.02875],
@@ -130,7 +129,6 @@ aeroOptions = {
     'usecoloring':              False,
     'printalloptions':          False,
 
-
     # design surfaces and cost functions 
     'designsurfacefamily':     'designSurfaces', 
     'designsurfaces':          ['body'], 
@@ -142,38 +140,27 @@ aeroOptions = {
     'adjointsolver':           'simpleROMFoam',
     'rasmodel':                'SpalartAllmarasFv3',
     'flowcondition':           'Incompressible',
-    'maxflowiters':            500, 
-    'writeinterval':           500,
+    'maxflowiters':            args.runEndTime, 
+    'writeinterval':           args.runEndTime,
     'avgobjfuncs':             False,
     'avgobjfuncsstart':        2000,
     'setflowbcs':              False, 
     'inletpatches':            ['inlet'],
     'outletpatches':           ['outlet'],
     'flowbcs':                 {'bc0':{'patch':'inlet','variable':'U','value':[20.0,0.0,0.0]},
-                                'bc1':{'patch':'outlet','variable':'p','value':[0.0]},
-                                'bc2':{'patch':'inlet','variable':'k','value':[0.06]},
-                                'bc3':{'patch':'inlet','variable':'omega','value':[400.0]},
-                                'bc4':{'patch':'inlet','variable':'epsilon','value':[2.16]},
-                                'bc5':{'patch':'inlet','variable':'nuTilda','value':[1.5e-4]},
                                 'useWallFunction':'true'},                
-    'transproperties':         {'nu':1.5E-5,
-                                'TRef':300.0,
-                                'beta':3e-3,
-                                'Pr':0.7,
-                                'Prt':0.85}, 
-
     # romDict
-    'nsamples':args.nSamples,
-    'deltaffd':deltaDVs,
-    'svdtype':'cross',
-    'svdtol':1e-8,
-    'svdmaxits':100,
-    'svdrequestedn':args.nSamples,
-    'usemf':1,
-    'mfstep':1e-6,
-    'debugmode':0,
-    'uselspg':0,
-    'romnkabstol':1e-8,
+    'nsamples':                args.nSamples,
+    'deltaffd':                deltaDVs,
+    'svdtype':                 'cross',
+    'svdtol':                  1e-8,
+    'svdmaxits':               100,
+    'svdrequestedn':           args.nSamples,
+    'usemf':                   1,
+    'mfstep':                  1e-6,
+    'debugmode':               0,
+    'uselspg':                 0,
+    'romnkabstol':             1e-8,
 
     # adjoint setup
     'adjdvtypes':              ['FFD'], 
@@ -185,7 +172,6 @@ aeroOptions = {
     
     ########## misc setup ##########
     'mpispawnrun':             False,
-    'restartopt':              False,
 
 }
 
@@ -194,7 +180,7 @@ meshOptions = {
     'gridFile':                os.getcwd(),
     'fileType':                'openfoam',
     # point and normal for the symmetry plane
-    'symmetryPlanes':          [[[0.,0., 0.],[0., 1., 0.]]], 
+    'symmetryPlanes':          [[[0.,0., 0.],[0., 0., 0.]]], 
 }
 
 # =================================================================================================
@@ -355,7 +341,6 @@ optFuncs.DVCon = DVCon
 optFuncs.evalFuncs = evalFuncs
 optFuncs.gcomm = gcomm
 
-
 # =================================================================================================
 # Task
 # =================================================================================================
@@ -373,13 +358,6 @@ if task.lower() == 'run':
 
     if gcomm.rank == 0:
         print funcs
-    
-    # Evaluate the sensitivities
-    #funcsSens = {}
-    #funcsSens,fail = optFuncs.aeroFuncsSens(xDV,funcs)
-    
-    #if gcomm.rank == 0:
-    #    print funcsSens
 
 elif task.lower() == 'writedelmat':
 

@@ -36,7 +36,7 @@ for n in `seq 1 1 $nSamples`; do
   killall -9 foamRun.sh
   ./foamRun.sh $exec $nProcs $solver &
   sleep 3
-  $exec -np $nProcs python runFlow.py --task=run --sample=$n --mode=train --nSamples=$nSamples
+  $exec -np $nProcs python runFlow.py --task=run --sample=$n --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
   killall -9 foamRun.sh
   sleep 3
 
@@ -44,7 +44,7 @@ for n in `seq 1 1 $nSamples`; do
   
 done
 
-$exec -np $nProcs python runFlow.py --task=deform --sample=$nSamples --mode=train --nSamples=$nSamples
+$exec -np $nProcs python runFlow.py --task=deform --sample=$nSamples --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
 sleep 3
 
 if [ $nProcs -gt 1 ]; then
@@ -88,7 +88,7 @@ else
 fi
 
 # now we can clear the samples
-rm -rf processor*
+rm -rf processor*/{1..100}
 rm -rf {1..100}
 killall -9 foamRun.sh
 
@@ -99,7 +99,7 @@ for n in $predictSamples; do
   cd ../prediction$n
 
   # deform but not running the flow, now the geometry is predict sample but the based field is at refSample
-  $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=predict --nSamples=$nSamples
+  $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=predict --nSamples=$nSamples --runEndTime=$runEndTime
 
   # run ROM, output UROM variables
   sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
