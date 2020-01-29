@@ -904,7 +904,7 @@ void ReducedOrderModeling::solveOfflineLinear()
     if(debugMode) adjIO_.writeMatrixASCII(dRdFFDReduced_,fNamedRdFFDReduced);
 
     Info<<"Writing the reduced matrices...."<<endl;
-    Info<"Done! "<<runTime_.elapsedClockTime()<<" s"<<endl;
+    Info<<"Done! "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
 }
 
