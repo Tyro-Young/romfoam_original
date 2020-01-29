@@ -786,6 +786,8 @@ void ReducedOrderModeling::solveOfflineNonlinear()
     this->calcReducedJacobian(rdRdWPC); 
     if (debugMode) adjIO_.writeMatrixASCII(rdRdWPC,"rdRdWPC");
     adjIO_.writeMatrixBinary(rdRdWPC,"rdRdWPC");
+
+    Info<<"Done "<<runTime_.timeName()<<endl;
 }
 
 void ReducedOrderModeling::solveOfflineLinear()
@@ -901,7 +903,7 @@ void ReducedOrderModeling::solveOfflineLinear()
     adjIO_.writeMatrixBinary(dRdFFDReduced_,fNamedRdFFDReduced);
     if(debugMode) adjIO_.writeMatrixASCII(dRdFFDReduced_,fNamedRdFFDReduced);
 
-    Info<<"Writing the reduced matrices.... Done!"<<endl;
+    Info<<"Writing the reduced matrices.... Done! "<<runTime_.timeName()<<endl;
 
 }
 
@@ -1336,6 +1338,8 @@ void ReducedOrderModeling::solveOnlineLinear()
         this->writeNewField(fieldPostfix);
     }
 
+    Info<<"Done! "<<runTime_.timeName()<<endl;
+
 }
 
 void ReducedOrderModeling::solveOnlineNonlinear()
@@ -1344,6 +1348,8 @@ void ReducedOrderModeling::solveOnlineNonlinear()
 
     // we use the Newton method to solver rResiduals(rStates)=0
     this->solveNK();
+
+    Info<<"Done! "<<runTime_.timeName()<<endl;
 
 }
 
