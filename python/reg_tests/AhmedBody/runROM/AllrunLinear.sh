@@ -1,7 +1,7 @@
 #!/bin/bash
 
 exec=mpirun
-nProcs=1
+nProcs=2
 solver=simpleROMFoam
 runEndTime=500
 nSamples=5
@@ -36,7 +36,7 @@ for n in `seq 1 1 $nSamples`; do
   killall -9 foamRun.sh
   ./foamRun.sh $exec $nProcs $solver &
   sleep 3
-  $exec -np $nProcs python runFlow.py --task=run --sample=$n --mode=train --nSamples=$nSamples
+  $exec -np $nProcs python runFlow.py --task=run --sample=$n --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
   killall -9 foamRun.sh
   sleep 3
 
@@ -44,9 +44,9 @@ for n in `seq 1 1 $nSamples`; do
   
 done
 
-$exec -np $nProcs python runFlow.py --task=writedelmat --sample=$nSamples --mode=train --nSamples=$nSamples
+$exec -np $nProcs python runFlow.py --task=writedelmat --sample=$nSamples --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
 sleep 3
-$exec -np $nProcs python runFlow.py --task=deform --sample=$nSamples --mode=train --nSamples=$nSamples
+$exec -np $nProcs python runFlow.py --task=deform --sample=$nSamples --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
 sleep 3
 
 if [ $nProcs -gt 1 ]; then
@@ -85,7 +85,7 @@ rm -rf {1..100}
 killall -9 foamRun.sh
 ./foamRun.sh $exec $nProcs $solver &
 sleep 3
-$exec -np $nProcs python runFlow.py --task=run --sample=$refSample --mode=train --nSamples=$nSamples
+$exec -np $nProcs python runFlow.py --task=run --sample=$refSample --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
 killall -9 foamRun.sh
 sleep 3
 
@@ -97,7 +97,7 @@ for n in $predictSamples; do
   cd ../prediction$n
 
   # deform but not running the flow, now the geometry is predict sample but the based field is at refSample
-  $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=predict --nSamples=$nSamples
+  $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=predict --nSamples=$nSamples --runEndTime=$runEndTime
 
   # run ROM, output UROM variables
   sed -i "/solveAdjoint/c\solveAdjoint           true;" system/adjointDict
@@ -109,8 +109,7 @@ for n in $predictSamples; do
   else
     $exec -np $nProcs $solver -mode onlineLinear -parallel
   fi
-  echo "CD: 0.411051924314323 (ROM Ref)"
-
+  echo "CD: 0.402314020616319 (ROM Ref)"
 
   # now run the flow at the predict sample, overwrite the variable at refSample
   echo "Run the flow at sample = $n"
@@ -122,8 +121,10 @@ for n in $predictSamples; do
     $exec -np $nProcs $solver -parallel > flowLog_${n}
   fi
   more objFuncs.dat
-  echo "CD 0.4136412179990393 (CFD Ref)"
+  echo "CD 0.402910900706668 (ROM Ref)"
 
+  killall -9 foamRun.sh
+  
   cd ../runROM
 
 done

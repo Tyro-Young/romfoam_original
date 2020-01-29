@@ -787,7 +787,7 @@ void ReducedOrderModeling::solveOfflineNonlinear()
     if (debugMode) adjIO_.writeMatrixASCII(rdRdWPC,"rdRdWPC");
     adjIO_.writeMatrixBinary(rdRdWPC,"rdRdWPC");
 
-    Info<<"Done "<<runTime_.timeName()<<endl;
+    Info<<"Done! "<<runTime_.elapsedClockTime()<<" s"<<endl;
 }
 
 void ReducedOrderModeling::solveOfflineLinear()
@@ -810,7 +810,7 @@ void ReducedOrderModeling::solveOfflineLinear()
 
     this->solveSVD(wSnapshotMat_,svdPhiWMat_,"svdPhiWMat");
 
-    Info<<"Calculating dRdW and dRdFFD at time = "<<runTime_.timeName()<<endl;
+    Info<<"Calculating dRdW and dRdFFD at time = "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
     label nProcs = Pstream::nProcs();
     std::ostringstream np("");
@@ -903,7 +903,8 @@ void ReducedOrderModeling::solveOfflineLinear()
     adjIO_.writeMatrixBinary(dRdFFDReduced_,fNamedRdFFDReduced);
     if(debugMode) adjIO_.writeMatrixASCII(dRdFFDReduced_,fNamedRdFFDReduced);
 
-    Info<<"Writing the reduced matrices.... Done! "<<runTime_.timeName()<<endl;
+    Info<<"Writing the reduced matrices...."<<endl;
+    Info<"Done! "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
 }
 
@@ -1338,7 +1339,7 @@ void ReducedOrderModeling::solveOnlineLinear()
         this->writeNewField(fieldPostfix);
     }
 
-    Info<<"Done! "<<runTime_.timeName()<<endl;
+    Info<<"Done! "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
 }
 
@@ -1349,7 +1350,7 @@ void ReducedOrderModeling::solveOnlineNonlinear()
     // we use the Newton method to solver rResiduals(rStates)=0
     this->solveNK();
 
-    Info<<"Done! "<<runTime_.timeName()<<endl;
+    Info<<"Done! "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
 }
 

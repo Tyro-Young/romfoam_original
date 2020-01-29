@@ -1,7 +1,7 @@
 #!/bin/bash
 
 exec=mpirun
-nProcs=1
+nProcs=2
 solver=simpleROMFoam
 runEndTime=500
 nSamples=5
@@ -13,6 +13,7 @@ predictSamples="1 2"
 # pre-processing
 ######################################################
 
+# Generate the mesh
 blockMesh
 surfaceFeatureExtract
 snappyHexMesh -overwrite
@@ -27,6 +28,7 @@ fi
 # runOffline
 ######################################################
 
+# Generate CFD samples
 for n in `seq 1 1 $nSamples`; do
 
   rm -rf ../sample$n
@@ -44,9 +46,12 @@ for n in `seq 1 1 $nSamples`; do
   
 done
 
+# deform the mesh to the reference point (last CFD sample)
 $exec -np $nProcs python runFlow.py --task=deform --sample=$nSamples --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
 sleep 3
 
+# link the simulations results from the CFD samples to runROM folder such that 
+# the simpleROMFoam can read then  to create the snapshot matrix
 if [ $nProcs -gt 1 ]; then
   ((nProcsM1=nProcs-1))
   for m in `seq 1 1 $nSamples`; do
@@ -61,10 +66,11 @@ else
     ln -s ../sample${m}/$runEndTime $m
   done
 fi
-
+# modify the parameters in and controlDict because we want to use the 
+# flow field from the latest sample to compute the preconditioner matrix
 sed -i "/startFrom/c\    startFrom       latestTime;" system/controlDict
 
-# use the last sample field as ref
+# run the offlineROM
 if [ $nProcs -eq 1 ]; then
   $solver -mode offlineNonlinear
 else
@@ -92,8 +98,10 @@ rm -rf processor*/{1..100}
 rm -rf {1..100}
 killall -9 foamRun.sh
 
+# loop over all the prediction points
 for n in $predictSamples; do
 
+  # copy the runROM folder to prediction* folder
   rm -rf ../prediction$n
   cp -r ../runROM ../prediction$n
   cd ../prediction$n
@@ -101,16 +109,17 @@ for n in $predictSamples; do
   # deform but not running the flow, now the geometry is predict sample but the based field is at refSample
   $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=predict --nSamples=$nSamples --runEndTime=$runEndTime
 
-  # run ROM, output UROM variables
+  # we want the onlineROM to use the latest CFD sample as the initial field
   sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
+
+  # run onlineROM, output UROM variables
   if [ $nProcs -eq 1 ]; then
     $solver -mode onlineNonlinear
   else
     $exec -np $nProcs $solver -mode onlineNonlinear -parallel
   fi
 
-
-  # now run the flow at the predict sample, overwrite the variable at refSample
+  # now run CFD at the predict sample
   echo "Run the flow at sample = $n"
   sed -i "/startFrom/c\startFrom       startTime;" system/controlDict
   sed -i "/solveAdjoint/c\solveAdjoint           false;" system/adjointDict
@@ -119,7 +128,11 @@ for n in $predictSamples; do
   else
     $exec -np $nProcs $solver -parallel > flowLog_${n}
   fi
+
+  # print the result from CFD for reference
   more objFuncs.dat
+
+  killall -9 foamRun.sh
 
   cd ../runROM
 
