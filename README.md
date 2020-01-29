@@ -30,11 +30,11 @@ ROMFoam depends on multiple prerequisites, to install ROMFoam
 
        source $HOME/.bashrc
  
- - Finally, download the OF_ROM repo, rename it to of_rom and put it in the $HOME/repos folder, load the OpenFOAM environment:
+ - Finally, download the ROMFoam repo, rename it to romfoam and put it in the $HOME/repos folder, load the OpenFOAM environment:
  
         source $HOME/OpenFOAM/OpenFOAM-v1812/etc/bashrc
 
-   and go into the $HOME/repos/of_rom folder, and run::
+   and go into the $HOME/repos/romfoam folder, and run::
    
        ./Allwmake
 
