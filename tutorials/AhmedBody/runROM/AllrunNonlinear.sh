@@ -94,8 +94,10 @@ else
 fi
 
 # now we can clear the samples
-rm -rf processor*/{1..100}
-rm -rf {1..100}
+for n in `seq 1 1 $nSamples`; do
+    rm -rf processor*/$n
+    rm -rf $n
+done
 killall -9 foamRun.sh
 
 # loop over all the prediction points

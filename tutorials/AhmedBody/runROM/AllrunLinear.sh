@@ -89,7 +89,9 @@ fi
 
 # clean up all the results, deform the mesh and run the flow at the refernece point
 rm -rf processor*
-rm -rf {1..100}
+for n in `seq 1 1 $nSamples`; do
+    rm -rf $n
+done
 killall -9 foamRun.sh
 ./foamRun.sh $exec $nProcs $solver &
 sleep 3
