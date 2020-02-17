@@ -116,6 +116,13 @@ int main(int argc, char *argv[])
             Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
                 << "  ClockTime = " << runTime.elapsedClockTime() << " s"
                 << nl << endl;
+
+            if(runTime.writeTime())
+            {
+                // 1: write residual variables
+                adjDev->copyStates("Var2Ref");
+                adjDev->calcFlowResidualStatistics("print",1); 
+            }
     
         }
         
@@ -123,7 +130,6 @@ int main(int argc, char *argv[])
     
         adjObj.writeObjFuncValues();
     
-        adjDev->calcFlowResidualStatistics("print",1); // 1: write residual variables
     }
     else 
     {
