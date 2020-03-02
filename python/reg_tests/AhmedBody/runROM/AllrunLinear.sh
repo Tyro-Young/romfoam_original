@@ -27,22 +27,29 @@ fi
 # runOffline
 ######################################################
 
+pFlag='-parallel'
+if [ $nProcs -eq 1 ]; then
+  pFlag=' '
+fi
+
+# Generate CFD samples
 for n in `seq 1 1 $nSamples`; do
 
   rm -rf ../sample$n
   cp -r ../runROM ../sample$n
 
   cd ../sample$n
-  killall -9 foamRun.sh
-  ./foamRun.sh $exec $nProcs $solver &
-  sleep 3
-  $exec -np $nProcs python runFlow.py --task=run --sample=$n --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
-  killall -9 foamRun.sh
-  sleep 3
-
+  # deform the mesh
+  $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
+  # run checkMesh for mesh quality
+  $exec -np $nProcs checkMesh $pFlag > checkMeshLog
+  # run the flow solver
+  $exec -np $nProcs $solver $pFlag > flowLog
+  cat objFuncs.dat
   cd ../runROM
   
 done
+
 
 $exec -np $nProcs python runFlow.py --task=writedelmat --sample=$nSamples --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
 sleep 3
@@ -69,25 +76,23 @@ sed -i "/useColoring/c\    useColoring           true;" system/adjointDict
 sed -i "/nFFDPoints/c\    nFFDPoints           $nDVs;" system/adjointDict
 sed -i "/startFrom/c\    startFrom       latestTime;" system/controlDict
 
-if [ $nProcs -eq 1 ]; then
-  $solver -mode offlineLinear
-else
-  $exec -np $nProcs $solver -mode offlineLinear -parallel
-fi
+$exec -np $nProcs $solver -mode offlineLinear $pFlag
 
 ######################################################
 # runOnline
 ######################################################
 
-# calc refFields
+# clean up all the results, deform the mesh and run the flow at the refernece point
 rm -rf processor*
-rm -rf {1..100}
-killall -9 foamRun.sh
-./foamRun.sh $exec $nProcs $solver &
-sleep 3
-$exec -np $nProcs python runFlow.py --task=run --sample=$refSample --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
-killall -9 foamRun.sh
-sleep 3
+for n in `seq 1 1 $nSamples`; do
+    rm -rf $n
+done
+$exec -np $nProcs python runFlow.py --task=deform --sample=$refSample --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
+# run checkMesh for mesh quality
+$exec -np $nProcs checkMesh $pFlag > checkMeshLog
+# run the flow solver
+$exec -np $nProcs $solver $pFlag > flowLog
+cat objFuncs.dat
 
 
 for n in $predictSamples; do
@@ -104,26 +109,16 @@ for n in $predictSamples; do
   sed -i "/useColoring/c\useColoring           true;" system/adjointDict
   sed -i "/nFFDPoints/c\    nFFDPoints           $nDVs;" system/adjointDict
   sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
-  if [ $nProcs -eq 1 ]; then
-    $solver -mode onlineLinear
-  else
-    $exec -np $nProcs $solver -mode onlineLinear -parallel
-  fi
+  $exec -np $nProcs $solver -mode onlineLinear $pFlag
   echo "CD: 0.402314020616319 (ROM Ref)"
 
   # now run the flow at the predict sample, overwrite the variable at refSample
   echo "Run the flow at sample = $n"
   sed -i "/startFrom/c\startFrom       startTime;" system/controlDict
   sed -i "/solveAdjoint/c\solveAdjoint           false;" system/adjointDict
-  if [ $nProcs -eq 1 ]; then
-    $solver > flowLog_${n}
-  else
-    $exec -np $nProcs $solver -parallel > flowLog_${n}
-  fi
+  $exec -np $nProcs $solver $pFlag > flowLog_${n}
   more objFuncs.dat
   echo "CD 0.402910900706668 (ROM Ref)"
-
-  killall -9 foamRun.sh
   
   cd ../runROM
 

@@ -13,11 +13,32 @@ predictSamples="1 2"
 # pre-processing
 ######################################################
 
-# Generate the mesh
+# Generate the mesh, choose either way 
+# 
+##************** Option 1: Mesh generation using 1 CPU core ***********
 blockMesh
 surfaceFeatureExtract
 snappyHexMesh -overwrite
 renumberMesh -overwrite
+
+##************** Option 2: Mesh generation using multiple CPU cores *********** 
+#blockMesh
+#sed -i "/numberOfSubdomains/c\numberOfSubdomains $nProcs;" system/decomposeParDict
+#surfaceFeatureExtract
+#decomposePar
+#$exec -np $nProcs snappyHexMesh -parallel
+#reconstructParMesh -latestTime
+#renumberMesh -overwrite
+#rm -rf constant/polyMesh/*
+#if [ -d "3/polyMesh" ]; then
+#  mv 3/polyMesh/* constant/polyMesh/
+#else
+#  mv 2/polyMesh/* constant/polyMesh/  
+#fi
+#rm -rf 1 2 3
+#rm -rf processor*
+
+# copy initial field and decompose the domain
 cp -r 0.orig 0
 sed -i "/numberOfSubdomains/c\numberOfSubdomains $nProcs;" system/decomposeParDict
 if [ $nProcs -gt 1 ]; then
@@ -28,6 +49,11 @@ fi
 # runOffline
 ######################################################
 
+pFlag='-parallel'
+if [ $nProcs -eq 1 ]; then
+  pFlag=' '
+fi
+
 # Generate CFD samples
 for n in `seq 1 1 $nSamples`; do
 
@@ -35,13 +61,13 @@ for n in `seq 1 1 $nSamples`; do
   cp -r ../runROM ../sample$n
 
   cd ../sample$n
-  killall -9 foamRun.sh
-  ./foamRun.sh $exec $nProcs $solver &
-  sleep 3
-  $exec -np $nProcs python runFlow.py --task=run --sample=$n --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
-  killall -9 foamRun.sh
-  sleep 3
-
+  # deform the mesh
+  $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
+  # run checkMesh for mesh quality
+  $exec -np $nProcs checkMesh $pFlag > checkMeshLog
+  # run the flow solver
+  $exec -np $nProcs $solver $pFlag > flowLog
+  cat objFuncs.dat
   cd ../runROM
   
 done
@@ -71,11 +97,7 @@ fi
 sed -i "/startFrom/c\    startFrom       latestTime;" system/controlDict
 
 # run the offlineROM
-if [ $nProcs -eq 1 ]; then
-  $solver -mode offlineNonlinear
-else
-  $exec -np $nProcs $solver -mode offlineNonlinear -parallel
-fi
+$exec -np $nProcs $solver -mode offlineNonlinear $pFlag
 
 ######################################################
 # runOnline
@@ -98,7 +120,6 @@ for n in `seq 1 1 $nSamples`; do
     rm -rf processor*/$n
     rm -rf $n
 done
-killall -9 foamRun.sh
 
 # loop over all the prediction points
 for n in $predictSamples; do
@@ -115,26 +136,16 @@ for n in $predictSamples; do
   sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
 
   # run onlineROM, output UROM variables
-  if [ $nProcs -eq 1 ]; then
-    $solver -mode onlineNonlinear
-  else
-    $exec -np $nProcs $solver -mode onlineNonlinear -parallel
-  fi
+  $exec -np $nProcs $solver -mode onlineNonlinear $pFlag
 
   # now run CFD at the predict sample
   echo "Run the flow at sample = $n"
   sed -i "/startFrom/c\startFrom       startTime;" system/controlDict
   sed -i "/solveAdjoint/c\solveAdjoint           false;" system/adjointDict
-  if [ $nProcs -eq 1 ]; then
-    $solver > flowLog_${n}
-  else
-    $exec -np $nProcs $solver -parallel > flowLog_${n}
-  fi
+  $exec -np $nProcs $solver $pFlag > flowLog_${n}
 
   # print the result from CFD for reference
-  more objFuncs.dat
-
-  killall -9 foamRun.sh
+  cat objFuncs.dat
 
   cd ../runROM
 

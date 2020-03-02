@@ -27,19 +27,25 @@ fi
 # runOffline
 ######################################################
 
+pFlag='-parallel'
+if [ $nProcs -eq 1 ]; then
+  pFlag=' '
+fi
+
+# Generate CFD samples
 for n in `seq 1 1 $nSamples`; do
 
   rm -rf ../sample$n
   cp -r ../runROM ../sample$n
 
   cd ../sample$n
-  killall -9 foamRun.sh
-  ./foamRun.sh $exec $nProcs $solver &
-  sleep 3
-  $exec -np $nProcs python runFlow.py --task=run --sample=$n --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
-  killall -9 foamRun.sh
-  sleep 3
-
+  # deform the mesh
+  $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
+  # run checkMesh for mesh quality
+  $exec -np $nProcs checkMesh $pFlag > checkMeshLog
+  # run the flow solver
+  $exec -np $nProcs $solver $pFlag > flowLog
+  cat objFuncs.dat
   cd ../runROM
   
 done
@@ -65,11 +71,7 @@ fi
 sed -i "/startFrom/c\    startFrom       latestTime;" system/controlDict
 
 # use the last sample field as ref
-if [ $nProcs -eq 1 ]; then
-  $solver -mode offlineNonlinear
-else
-  $exec -np $nProcs $solver -mode offlineNonlinear -parallel
-fi
+$exec -np $nProcs $solver -mode offlineNonlinear $pFlag
 
 ######################################################
 # runOnline
@@ -88,9 +90,10 @@ else
 fi
 
 # now we can clear the samples
-rm -rf processor*/{1..100}
-rm -rf {1..100}
-killall -9 foamRun.sh
+for n in `seq 1 1 $nSamples`; do
+    rm -rf processor*/$n
+    rm -rf $n
+done
 
 for n in $predictSamples; do
 
@@ -103,11 +106,7 @@ for n in $predictSamples; do
 
   # run ROM, output UROM variables
   sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
-  if [ $nProcs -eq 1 ]; then
-    $solver -mode onlineNonlinear
-  else
-    $exec -np $nProcs $solver -mode onlineNonlinear -parallel
-  fi
+  $exec -np $nProcs $solver -mode onlineNonlinear $pFlag
   echo "CD: 0.402261736832066 (ROM Ref)"
 
 
@@ -115,15 +114,9 @@ for n in $predictSamples; do
   echo "Run the flow at sample = $n"
   sed -i "/startFrom/c\startFrom       startTime;" system/controlDict
   sed -i "/solveAdjoint/c\solveAdjoint           false;" system/adjointDict
-  if [ $nProcs -eq 1 ]; then
-    $solver > flowLog_${n}
-  else
-    $exec -np $nProcs $solver -parallel > flowLog_${n}
-  fi
+  $exec -np $nProcs $solver $pFlag > flowLog_${n}
   more objFuncs.dat
   echo "CD 0.4029108949571894 (ROM Ref)"
-
-  killall -9 foamRun.sh
 
   cd ../runROM
 
