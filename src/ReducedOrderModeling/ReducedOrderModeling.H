@@ -178,6 +178,8 @@ public:
 
     scalar romNKGMRESRTol;
 
+    label romNKGMRESMaxLS;
+
     /// whether to use Least-square Petrov-Galerkin projection formulation for nonlinearROM
     label useLSPG;
 

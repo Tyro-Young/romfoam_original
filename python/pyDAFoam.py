@@ -1038,6 +1038,7 @@ class PYDAFOAM(AeroSolver):
                     'uselspg':[int,0],
                     'romnkabstol':[float,1e-8],
                     'romnkgmresrtol':[float,1e-2],
+                    'romnkgmresmaxls':[int,10],
                     'romnkmaxits':[int,20],
 
                     
@@ -5421,6 +5422,7 @@ class PYDAFOAM(AeroSolver):
             f.write('mfStep          %e;\n'%self.getOption('mfstep'))
             f.write('romNKAbsTol     %e;\n'%self.getOption('romnkabstol'))
             f.write('romNKGMRESRTol  %e;\n'%self.getOption('romnkgmresrtol'))
+            f.write('romNKGMRESMaxLS %d;\n'%self.getOption('romnkgmresmaxls'))
             f.write('romNKMaxIts     %d;\n'%self.getOption('romnkmaxits'))
             f.write('useLSPG         %d;\n'%self.getOption('uselspg'))
             

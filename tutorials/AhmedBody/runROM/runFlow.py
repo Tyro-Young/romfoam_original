@@ -161,6 +161,8 @@ aeroOptions = {
     'debugmode':               0,
     'uselspg':                 0,
     'romnkabstol':             1e-8,
+    'romnkmaxits':             20,
+    'romnkgmresmaxls':         5,
 
     # adjoint setup
     'adjdvtypes':              ['FFD'], 

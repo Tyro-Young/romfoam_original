@@ -97,6 +97,7 @@ ReducedOrderModeling::ReducedOrderModeling
     mfStep                    = readOptionOrDefault<scalar>(romDict_,"mfStep",1e-6);
     romNKAbsTol               = readOptionOrDefault<scalar>(romDict_,"romNKAbsTol",1e-8);
     romNKGMRESRTol            = readOptionOrDefault<scalar>(romDict_,"romNKGMRESRTol",1e-2);
+    romNKGMRESMaxLS           = readOptionOrDefault<label>(romDict_,"romNKGMRESMaxLS",10);
     romNKMaxIts               = readOptionOrDefault<label>(romDict_,"romNKMaxIts",20);
     useLSPG                   = readOptionOrDefault<label>(romDict_,"useLSPG",0);
     
@@ -1579,7 +1580,7 @@ scalar ReducedOrderModeling::NKLineSearch
     alpha=1.0;
 
     // actual backtracking
-    for(label i=0;i<10;i++)
+    for(label i=0;i<romNKGMRESMaxLS;i++)
     {
         // compute new w value wNew = w-dW Note: dW is the solution from KSP it is dW=wOld-wNew
         VecWAXPY(wVecNew,-alpha,dWVec,wVec);
