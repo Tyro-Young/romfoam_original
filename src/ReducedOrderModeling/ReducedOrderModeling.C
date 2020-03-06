@@ -780,6 +780,8 @@ void ReducedOrderModeling::solveOfflineNonlinear()
 
     if(useLSPG==0) this->solveSVD(rSnapshotMat_,svdPhiRMat_,"svdPhiRMat");
 
+    if (debugMode) this->getMatrixColNorms(svdPhiWMat_,"svdPhiWMat");
+
     // initialize and calculate rdRdWPC
     Mat rdRdWPC;
     this->initializeReducedJacobian(&rdRdWPC);
@@ -810,6 +812,8 @@ void ReducedOrderModeling::solveOfflineLinear()
     this->initializeSVDPhiMat();
 
     this->solveSVD(wSnapshotMat_,svdPhiWMat_,"svdPhiWMat");
+
+    if (debugMode) this->getMatrixColNorms(svdPhiWMat_,"svdPhiWMat");
 
     Info<<"Calculating dRdW and dRdFFD at time = "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
@@ -1375,6 +1379,10 @@ void ReducedOrderModeling::solveNK()
     // these vars are for store the tolerance for GMRES linear solution
     scalar rGMRESHist[adjIO_.nkGMRESMaxIters+1];
     label nGMRESIters=adjIO_.nkGMRESMaxIters+1;
+    // these vars are for store the FD step size for GMRES linear solution
+    scalar nkHHist[adjIO_.nkGMRESMaxIters+1];
+    label nkHN=adjIO_.nkGMRESMaxIters+1;
+    for(label i=0;i<adjIO_.nkGMRESMaxIters+1;i++) nkHHist[i]=0.0;
 
     // create reduced Jacobian and set function evaluation 
     MatCreateMFFD(PETSC_COMM_WORLD,PETSC_DECIDE,PETSC_DECIDE,nSamples,nSamples,&rdRdW);
@@ -1467,6 +1475,8 @@ void ReducedOrderModeling::solveNK()
 
         // set up rGMRESHist to save the tolerance history for the GMRES solution
         KSPSetResidualHistory(ksp,rGMRESHist,nGMRESIters,PETSC_TRUE);
+        // set up the FD step history and print it for debugging
+        MatMFFDSetHHistory(rdRdW,nkHHist,nkHN);
 
         // before solving the ksp, form the baseVector for matrix-vector products.
         // Note: we need to apply normalize-states to the baseVector
@@ -1539,6 +1549,14 @@ void ReducedOrderModeling::solveNK()
             adjIO_.writeVectorASCII(wVecReduced_,name2);
             adjIO_.writeVectorASCII(rVecFull_,name3);
             adjIO_.writeVectorASCII(wVecFull_,name4);
+            Info<<"NK Iter: "<<iterI<<endl;
+            for(label i=0;i<nkHN;i++)
+            {
+                if(fabs(nkHHist[i])>1e-16)
+                {
+                    Info<<"GMRES iter"<<i<<" FD step: "<<nkHHist[i]<<endl;
+                }
+            }
         }
 
     }
@@ -2288,6 +2306,34 @@ scalar ReducedOrderModeling::getResNorm(word mode)
     FatalErrorIn("")<<"mode not valid"<< abort(FatalError);
     return -10000.0;
 
+}
+
+void ReducedOrderModeling::getMatrixColNorms(Mat matIn,word matName)
+{
+
+    label nCols, nRows;
+    MatGetSize(matIn,&nRows,&nCols);
+
+    Vec colVec;
+    VecCreate(PETSC_COMM_WORLD,&colVec);
+    VecSetSizes(colVec,localSize_,PETSC_DECIDE);
+    VecSetFromOptions(colVec);
+
+    OFstream fOut(matName+"_ColInfo.txt");
+    fOut<<"col                 L2Norm                Mean"<<endl;
+    
+    scalar norm2=0.0,mean=0.0;
+    for(label n=0;n<nCols;n++)
+    {
+        VecZeroEntries(colVec);
+        MatGetColumnVector(matIn,colVec,n);
+        VecNorm(colVec,NORM_2,&norm2);
+        VecSum(colVec,&mean);
+        mean=mean*1.0/nRows;
+        fOut<<n<<"  "<<norm2<<"  "<<mean<<endl;
+    }
+
+    return;
 }
 
 // end of namespace Foam

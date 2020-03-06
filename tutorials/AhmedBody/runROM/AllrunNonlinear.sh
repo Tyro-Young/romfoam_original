@@ -4,6 +4,7 @@ exec=mpirun
 nProcs=2
 solver=simpleROMFoam
 runEndTime=500
+avgFieldEvery=-1
 nSamples=5
 refSample=$nSamples
 nDVs=1

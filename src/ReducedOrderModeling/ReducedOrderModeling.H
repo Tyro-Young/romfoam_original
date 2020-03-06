@@ -245,6 +245,9 @@ public:
     /// Newton solver for ROM nonlinear equations
     void solveNK();
 
+    /// compute the mean and norm for each colume of a matrix and write it to disk
+    void getMatrixColNorms(Mat matIn,word matName);
+
     /// read an option from dict and add them to romParameters_
     template<class type>
     type readOptionOrDefault

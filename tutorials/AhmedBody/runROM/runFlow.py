@@ -28,6 +28,7 @@ parser.add_argument('--optVars',type=str,help='Vars for the optimizer',default="
 parser.add_argument('--sample',type=int,help='which sample DV to run',default=1)
 parser.add_argument('--mode',type=str,help='can be either train or predict',default='train')
 parser.add_argument('--runEndTime',type=int,help='number of time steps for flow',default=500)
+parser.add_argument('--avgFieldEvery',type=int,help='average obj and field every ? steps',default=-1)
 parser.add_argument('--nSamples',type=int,help='number of samples',default=1)
 args = parser.parse_args()
 exec('optVars=%s'%args.optVars)
@@ -36,6 +37,15 @@ outputDirectory = args.output
 gcomm = MPI.COMM_WORLD
 
 sample=args.sample-1
+
+if args.avgFieldEvery>0:
+    useAvg=True
+    avgFrom=args.runEndTime-args.avgFieldEvery
+    avgFields=['U','p','phi']
+else:
+    useAvg=False
+    avgFrom=0
+    avgFields=[]
 
 if gcomm.rank==0:
     print(sample,optVars)
@@ -142,8 +152,10 @@ aeroOptions = {
     'flowcondition':           'Incompressible',
     'maxflowiters':            args.runEndTime, 
     'writeinterval':           args.runEndTime,
-    'avgobjfuncs':             False,
-    'avgobjfuncsstart':        2000,
+    'avgobjfuncs':             useAvg,
+    'avgobjfuncsstart':        avgFrom,
+    'avgfields':               avgFields,
+    'avgfieldsevery':          args.avgFieldEvery,
     'setflowbcs':              False, 
     'inletpatches':            ['inlet'],
     'outletpatches':           ['outlet'],

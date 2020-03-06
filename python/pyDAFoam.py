@@ -1071,6 +1071,8 @@ class PYDAFOAM(AeroSolver):
                     'restartopt':[bool,False],
                     'avgobjfuncs':[bool,False],
                     'avgobjfuncsstart': [int,1000],
+                    'avgfields':[list,[]],
+                    'avgfieldsevery': [int,1000],
                     'mpispawnrun': [bool,True],
                     'runpotentialfoam':[bool,False],
                     'updatemesh':[bool,True],
@@ -5559,6 +5561,26 @@ class PYDAFOAM(AeroSolver):
                 f.write('        lRef                %f;\n'%self.getOption('referencevalues')['LRef'] )
                 f.write('        Aref                %f;\n'%self.getOption('referencevalues')['ARef'] )
                 f.write('    } \n')
+                f.write('    fieldAverage1 \n')
+                f.write('    { \n')
+                f.write('        type                fieldAverage;\n')
+                f.write('        libs                ("libfieldFunctionObjects.so");\n')
+                f.write('        writeControl        writeTime;\n')
+                f.write('        restartOnRestart    false;\n')
+                f.write('        restartOnOutput     false;\n')
+                f.write('        periodicRestart     true;\n')
+                f.write('        restartPeriod       %d;\n'%self.getOption('avgfieldsevery'))
+                f.write('        fields\n')
+                f.write('        (\n')
+                for field in self.getOption('avgfields'):
+                    f.write('            %s\n'%field)
+                    f.write('            {\n')
+                    f.write('                mean        on;\n')
+                    f.write('                prime2Mean  off;\n')
+                    f.write('                base        time;\n')
+                    f.write('            }\n')
+                f.write('        );\n')
+                f.write('     }\n')
                 f.write('} \n')
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
 
