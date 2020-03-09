@@ -1058,6 +1058,7 @@ void ReducedOrderModeling::calcdRdWPhiMF(Mat dRdWPhi)
         this->perturbStatesMF(nn);
 
         adjDev_.calcResPartDeriv(mfStep,isPC);
+        nFuncEvals_++;
 
         // reset perturbation
         adjDev_.copyStates("Ref2Var");
@@ -1408,6 +1409,7 @@ void ReducedOrderModeling::solveNK()
     VecZeroEntries(wVecFull_);  
     this->NKSetVecs(wVecFull_,"Var2Vec",1.0,"");
     MatMultTranspose(svdPhiWMat_,wVecFull_,wVecReduced_);
+    if (useLSPG) this->calcdRdWPhiMF(dRdWPhi_); // we need to compute the initial dRdWPhi for LSPG
     this->NKCalcResidualsReduced(wVecReduced_,rVecReduced_);
 
     // compute the initial norm
@@ -1488,6 +1490,9 @@ void ReducedOrderModeling::solveNK()
         VecCopy(rVecReduced_,rVecReducedBase); 
         //this->setNormalizeStatesScaling2Vec(rVecBase);
         MatMFFDSetBase(rdRdW,wVecReduced_,rVecReducedBase);
+
+        // for each major iteration, update the dRdWPhi matrix for LSPG
+        if (useLSPG) this->calcdRdWPhiMF(dRdWPhi_);
 
         // solve the linear system
         // we should use rVec0 as the rhs, however, we need to normalize
@@ -1877,7 +1882,6 @@ void ReducedOrderModeling::NKCalcResidualsReduced(Vec wVec,Vec rVec)
     VecZeroEntries(rVec);
     if(useLSPG)
     {
-        this->calcdRdWPhiMF(dRdWPhi_);
         MatMultTranspose(dRdWPhi_,rVecFull_,rVec);
     }
     else
