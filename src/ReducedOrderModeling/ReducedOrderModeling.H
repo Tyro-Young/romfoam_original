@@ -183,6 +183,9 @@ public:
     /// whether to use Least-square Petrov-Galerkin projection formulation for nonlinearROM
     label useLSPG;
 
+    /// use a constant matrix free finite difference step size if prescribed
+    scalar romNKMFFDH;
+
     /// initialize snapshot matrix
     void initializeSnapshotMat();
 
@@ -259,6 +262,7 @@ public:
 
     // NK Member Functions
     static PetscErrorCode FormFunction(void* ctx,Vec wVec,Vec rVec);
+    static PetscErrorCode ComputeMFFDH(void* ctx,Vec vec1,Vec vec2, PetscScalar* h);
     void NKCalcResidualsReduced(Vec wVec,Vec rVec);
     void NKCalcResidualsFull(Vec wVec,Vec rVec);
     /// general function to set vecX to/from states/residual variables

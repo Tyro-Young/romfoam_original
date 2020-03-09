@@ -1040,7 +1040,7 @@ class PYDAFOAM(AeroSolver):
                     'romnkgmresrtol':[float,1e-2],
                     'romnkgmresmaxls':[int,10],
                     'romnkmaxits':[int,20],
-
+                    'romnkmffdh':[float,-9999.0],
                     
                     # objectiveFunctionOptions
                     'objfuncgeoinfo':[list,[['wall'],['wall']]], # objfuncgeoinfo is a listlist
@@ -5427,6 +5427,7 @@ class PYDAFOAM(AeroSolver):
             f.write('romNKGMRESMaxLS %d;\n'%self.getOption('romnkgmresmaxls'))
             f.write('romNKMaxIts     %d;\n'%self.getOption('romnkmaxits'))
             f.write('useLSPG         %d;\n'%self.getOption('uselspg'))
+            f.write('romNKMFFDF      %e;\n'%self.getOption('romnkmffdh'))
             
             f.write('\n')
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')

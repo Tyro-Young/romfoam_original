@@ -100,6 +100,7 @@ ReducedOrderModeling::ReducedOrderModeling
     romNKGMRESMaxLS           = readOptionOrDefault<label>(romDict_,"romNKGMRESMaxLS",10);
     romNKMaxIts               = readOptionOrDefault<label>(romDict_,"romNKMaxIts",20);
     useLSPG                   = readOptionOrDefault<label>(romDict_,"useLSPG",0);
+    romNKMFFDH                = readOptionOrDefault<scalar>(romDict_,"romNKMFFDH",-9999.0);
     
 
     // print all the parameters to screen    
@@ -1388,6 +1389,8 @@ void ReducedOrderModeling::solveNK()
     MatCreateMFFD(PETSC_COMM_WORLD,PETSC_DECIDE,PETSC_DECIDE,nSamples,nSamples,&rdRdW);
     MatMFFDSetFunction(rdRdW,FormFunction,this);
 
+    if (romNKMFFDH > 0.0) MatMFFDSetCheckh(rdRdW,ComputeMFFDH,this);
+
     // initialize and calculate rdRdWPC
     this->initializeReducedJacobian(&rdRdWPC);
     // save the unperturb residual statistics as reference
@@ -1396,8 +1399,8 @@ void ReducedOrderModeling::solveNK()
     adjDev_.calcFlowResidualStatistics("set");
     adjDev_.calcFlowResidualStatistics("print");
     //this->calcReducedJacobian(rdRdWPC); 
-    //if (debugMode) adjIO_.writeMatrixASCII(rdRdWPC,"rdRdWPC");
     adjIO_.readMatrixBinary(rdRdWPC,"rdRdWPC");
+    if (debugMode) adjIO_.writeMatrixASCII(rdRdWPC,"rdRdWPC");
 
     // first compute/assign the initial wVec and rVec and compute the initial totalResNorm0
     VecZeroEntries(wVecReduced_);
@@ -1539,6 +1542,14 @@ void ReducedOrderModeling::solveNK()
 
         if (debugMode)
         {
+            Info<<"NK Iter: "<<iterI<<endl;
+            for(label i=0;i<nkHN;i++)
+            {
+                if(fabs(nkHHist[i])>1e-16)
+                {
+                    Info<<"GMRES iter"<<i<<" FD step: "<<nkHHist[i]<<endl;
+                }
+            }
             std::ostringstream nn("");
             nn<<iterI;
             std::string name1="rVecReduced_"+nn.str();
@@ -1549,14 +1560,6 @@ void ReducedOrderModeling::solveNK()
             adjIO_.writeVectorASCII(wVecReduced_,name2);
             adjIO_.writeVectorASCII(rVecFull_,name3);
             adjIO_.writeVectorASCII(wVecFull_,name4);
-            Info<<"NK Iter: "<<iterI<<endl;
-            for(label i=0;i<nkHN;i++)
-            {
-                if(fabs(nkHHist[i])>1e-16)
-                {
-                    Info<<"GMRES iter"<<i<<" FD step: "<<nkHHist[i]<<endl;
-                }
-            }
         }
 
     }
@@ -1826,6 +1829,18 @@ PetscErrorCode ReducedOrderModeling::FormFunction(void* ctx,Vec wVec,Vec rVec)
     rom->NKCalcResidualsReduced(wVec,rVec);
 
     //rom->setNormalizeStatesScaling2Vec(rVec);
+    
+    return 0;
+    
+}
+
+PetscErrorCode ReducedOrderModeling::ComputeMFFDH(void* ctx,Vec vec1,Vec vec2, PetscScalar* h)
+{
+    
+    
+    ReducedOrderModeling *rom = (ReducedOrderModeling*) ctx;
+
+    *h=rom->romNKMFFDH;
     
     return 0;
     
