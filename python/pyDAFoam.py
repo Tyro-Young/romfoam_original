@@ -5427,7 +5427,7 @@ class PYDAFOAM(AeroSolver):
             f.write('romNKGMRESMaxLS %d;\n'%self.getOption('romnkgmresmaxls'))
             f.write('romNKMaxIts     %d;\n'%self.getOption('romnkmaxits'))
             f.write('useLSPG         %d;\n'%self.getOption('uselspg'))
-            f.write('romNKMFFDF      %e;\n'%self.getOption('romnkmffdh'))
+            f.write('romNKMFFDH      %e;\n'%self.getOption('romnkmffdh'))
             
             f.write('\n')
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
