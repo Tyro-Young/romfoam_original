@@ -97,11 +97,11 @@ ReducedOrderModeling::ReducedOrderModeling
     mfStep                    = readOptionOrDefault<scalar>(romDict_,"mfStep",1e-6);
     romNKAbsTol               = readOptionOrDefault<scalar>(romDict_,"romNKAbsTol",1e-8);
     romNKGMRESRTol            = readOptionOrDefault<scalar>(romDict_,"romNKGMRESRTol",1e-2);
+    romNKLSFullRes            = readOptionOrDefault<label>(romDict_,"romNKLSFullRes",0);
     romNKGMRESMaxLS           = readOptionOrDefault<label>(romDict_,"romNKGMRESMaxLS",10);
     romNKMaxIts               = readOptionOrDefault<label>(romDict_,"romNKMaxIts",20);
     useLSPG                   = readOptionOrDefault<label>(romDict_,"useLSPG",0);
     romNKMFFDH                = readOptionOrDefault<scalar>(romDict_,"romNKMFFDH",-9999.0);
-    
 
     // print all the parameters to screen    
     Info<<"ROM Parameters"<<romParameters_<<endl;
@@ -176,6 +176,7 @@ void ReducedOrderModeling::initializeOnlineNonlinear()
     np<<nProcs;
     std::string fNamePhi="svdPhiWMat_"+np.str();
     adjIO_.readMatrixBinary(svdPhiWMat_,fNamePhi);
+    this->getPhiMatStateInfo(svdPhiWMat_);
 
     if(useLSPG==0)
     {
@@ -1579,6 +1580,9 @@ void ReducedOrderModeling::solveNK()
     this->writeNewField("ROM");
 
     adjDev_.calcFlowResidualStatistics("print");
+
+    adjIO_.writeVectorASCII(rVecReduced_,"rVecReduced");
+    adjIO_.writeVectorASCII(wVecReduced_,"wVecReduced");
     
 }
 
@@ -1602,8 +1606,15 @@ scalar ReducedOrderModeling::NKLineSearch
 
     // compute the norms
     scalar rVecNorm=0.0, rVecNewNorm=0.0;
-    VecNorm(rVec,NORM_2,&rVecNorm);
-
+    if(romNKLSFullRes)
+    {
+        VecNorm(rVecFull_,NORM_2,&rVecNorm);
+    }
+    else
+    {
+        VecNorm(rVec,NORM_2,&rVecNorm);
+    }
+    
     // initial step
     alpha=1.0;
 
@@ -1617,7 +1628,14 @@ scalar ReducedOrderModeling::NKLineSearch
         this->NKCalcResidualsReduced(wVecNew,rVecNew);
 
         // compute the rVecNorm at new w
-        ierr=VecNorm(rVecNew,NORM_2,&rVecNewNorm);
+        if(romNKLSFullRes)
+        {
+            ierr=VecNorm(rVecFull_,NORM_2,&rVecNewNorm);
+        }
+        else
+        {
+            ierr=VecNorm(rVecNew,NORM_2,&rVecNewNorm);
+        }
 
         if(ierr == PETSC_ERR_FP)
         {

@@ -186,6 +186,9 @@ public:
     /// use a constant matrix free finite difference step size if prescribed
     scalar romNKMFFDH;
 
+    /// whether to use full residual as the criteria for NK line search
+    label romNKLSFullRes;
+
     /// initialize snapshot matrix
     void initializeSnapshotMat();
 
