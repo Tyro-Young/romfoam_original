@@ -779,6 +779,8 @@ void ReducedOrderModeling::solveOfflineNonlinear()
 
     this->solveSVD(wSnapshotMat_,svdPhiWMat_,"svdPhiWMat");
 
+    this->getPhiMatStateInfo(svdPhiWMat_);
+
     if(useLSPG==0) this->solveSVD(rSnapshotMat_,svdPhiRMat_,"svdPhiRMat");
 
     if (debugMode) this->getMatrixColNorms(svdPhiWMat_,"svdPhiWMat");
@@ -2352,6 +2354,64 @@ void ReducedOrderModeling::getMatrixColNorms(Mat matIn,word matName)
         fOut<<n<<"  "<<norm2<<"  "<<mean<<endl;
     }
 
+    return;
+}
+
+void ReducedOrderModeling::getPhiMatStateInfo(Mat matIn)
+{
+    label nRows,nCols;
+    MatGetSize(matIn,&nRows,&nCols);
+
+    label myID=Pstream::myProcNo();
+
+    Vec vecOut;
+    VecCreate(PETSC_COMM_WORLD,&vecOut);
+    VecSetSizes(vecOut,nCols,PETSC_DECIDE);
+    VecSetFromOptions(vecOut);
+
+    forAll(adjReg_.volVectorStates,idxI)
+    {
+        const word stateName = adjReg_.volVectorStates[idxI];                
+        const volVectorField& state = db_.lookupObject<volVectorField>(stateName); 
+        
+        scalar maxVolVectorMag=0.0;
+        scalar maxVolVectorCellI=0.0;
+        forAll(state,cellI)
+        {
+            if( mag(state[cellI])>maxVolVectorMag )
+            {
+                maxVolVectorMag=mag(state[cellI]);
+                maxVolVectorCellI=cellI;
+            }
+        }
+
+        VecZeroEntries(vecOut);
+
+        for(label j=0;j<nCols;j++)
+        {
+            scalar val;
+            vector vecMag=vector::zero;
+            for (label i=0;i<3;i++)
+            {
+                label globalIdx = adjIdx_.getGlobalAdjointStateIndex(stateName,maxVolVectorCellI,i);
+                MatGetValues(matIn,1,&globalIdx,1,&j,&val);
+                vecMag[i]=val;
+            }
+            label globalRow=myID*nCols+j;
+            scalar mag1=mag(vecMag);
+            VecSetValue(vecOut,globalRow,mag1,INSERT_VALUES);
+        }
+
+        VecAssemblyBegin(vecOut);
+        VecAssemblyEnd(vecOut);
+
+        std::ostringstream nn("");
+        nn<<stateName;
+        std::string name1="SVDStateInfo_"+nn.str();
+        adjIO_.writeVectorASCII(vecOut,name1);
+    }
+
+    
     return;
 }
 

@@ -251,6 +251,9 @@ public:
     /// compute the mean and norm for each colume of a matrix and write it to disk
     void getMatrixColNorms(Mat matIn,word matName);
 
+    /// get the mean magnitude of state variables
+    void getPhiMatStateInfo(Mat matIn);
+
     /// read an option from dict and add them to romParameters_
     template<class type>
     type readOptionOrDefault
