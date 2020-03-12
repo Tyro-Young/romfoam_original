@@ -174,11 +174,17 @@ public:
     /// NK solution absolute tolerance for nonlinear ROM
     scalar romNKAbsTol;
 
+    /// max nonlinear iteration of NK solver
     label romNKMaxIts;
 
+    /// relative tolerance of linear GMRES solution in NK
     scalar romNKGMRESRTol;
 
+    /// maximal number of line search for NK
     label romNKGMRESMaxLS;
+
+    /// whether to use matrix-free strategy for nonlinear ROM NK GMRES solution
+    label romNKGMRESMF;
 
     /// whether to use Least-square Petrov-Galerkin projection formulation for nonlinearROM
     label useLSPG;
@@ -188,6 +194,9 @@ public:
 
     /// whether to use full residual as the criteria for NK line search
     label romNKLSFullRes;
+
+    /// whether to do svd for residuals
+    label romUseSVDRes;
 
     /// initialize snapshot matrix
     void initializeSnapshotMat();
@@ -248,7 +257,7 @@ public:
     /// write the new fields as UROM pROM etc.
     void writeNewField(word postfix);
 
-    /// Newton solver for ROM nonlinear equations
+    /// Newton-Krylov solver for ROM nonlinear equations
     void solveNK();
 
     /// compute the mean and norm for each colume of a matrix and write it to disk

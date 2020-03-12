@@ -95,6 +95,7 @@ ReducedOrderModeling::ReducedOrderModeling
     useMF                     = readOptionOrDefault<label>(romDict_,"useMF",1);
     debugMode                 = readOptionOrDefault<label>(romDict_,"debugMode",0);
     mfStep                    = readOptionOrDefault<scalar>(romDict_,"mfStep",1e-6);
+    romNKGMRESMF              = readOptionOrDefault<label>(romDict_,"romNKGMRESMF",1);
     romNKAbsTol               = readOptionOrDefault<scalar>(romDict_,"romNKAbsTol",1e-8);
     romNKGMRESRTol            = readOptionOrDefault<scalar>(romDict_,"romNKGMRESRTol",1e-2);
     romNKLSFullRes            = readOptionOrDefault<label>(romDict_,"romNKLSFullRes",0);
@@ -102,6 +103,7 @@ ReducedOrderModeling::ReducedOrderModeling
     romNKMaxIts               = readOptionOrDefault<label>(romDict_,"romNKMaxIts",20);
     useLSPG                   = readOptionOrDefault<label>(romDict_,"useLSPG",0);
     romNKMFFDH                = readOptionOrDefault<scalar>(romDict_,"romNKMFFDH",-9999.0);
+    romUseSVDRes              = readOptionOrDefault<label>(romDict_,"romUseSVDRes",0);
 
     // print all the parameters to screen    
     Info<<"ROM Parameters"<<romParameters_<<endl;
@@ -178,7 +180,7 @@ void ReducedOrderModeling::initializeOnlineNonlinear()
     adjIO_.readMatrixBinary(svdPhiWMat_,fNamePhi);
     this->getPhiMatStateInfo(svdPhiWMat_);
 
-    if(useLSPG==0)
+    if(romUseSVDRes)
     {
         // read svdPhiRMat
         std::ostringstream npR("");
@@ -186,24 +188,6 @@ void ReducedOrderModeling::initializeOnlineNonlinear()
         std::string fNamePhiR="svdPhiRMat_"+npR.str();
         adjIO_.readMatrixBinary(svdPhiRMat_,fNamePhiR);
     }
-    
-    VecCreate(PETSC_COMM_WORLD,&deltaFFDVec_);
-    VecSetSizes(deltaFFDVec_,PETSC_DECIDE,nFFDs_);
-    VecSetFromOptions(deltaFFDVec_);
-    VecZeroEntries(deltaFFDVec_);
-
-    label Istart,Iend;
-    VecGetOwnershipRange(deltaFFDVec_,&Istart,&Iend);
-    
-    for(label i=Istart;i<Iend;i++)
-    {
-        scalar val=deltaFFD[i];
-        VecSetValue(deltaFFDVec_,i,val,INSERT_VALUES);
-    }
-    VecAssemblyBegin(deltaFFDVec_);
-    VecAssemblyEnd(deltaFFDVec_);
-
-    if(debugMode) adjIO_.writeVectorASCII(deltaFFDVec_,"deltaFFDVec");
 
     VecCreate(PETSC_COMM_WORLD,&wVecFull_);
     VecSetSizes(wVecFull_,localSize_,PETSC_DECIDE);
@@ -283,7 +267,7 @@ void ReducedOrderModeling::initializeSnapshotMat()
 
 
     // create rSnapshotMat_
-    if(mode_=="nonlinear" && useLSPG==0)
+    if(mode_=="nonlinear" && romUseSVDRes)
     {
         MatCreate(PETSC_COMM_WORLD,&rSnapshotMat_);
         MatSetSizes(rSnapshotMat_,localSize_,PETSC_DECIDE,PETSC_DETERMINE,nSamples);
@@ -327,7 +311,7 @@ void ReducedOrderModeling::initializeSVDPhiMat()
     MatSetUp(svdPhiWMat_);
     Info<<"Phi matrix Created. "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
-    if(mode_=="nonlinear" && useLSPG==0)
+    if(mode_=="nonlinear" && romUseSVDRes)
     {
         Info<<"Initializing the Phi matrix for R. "<<runTime_.elapsedClockTime()<<" s"<<endl;
         // create svdPhiRMat_
@@ -522,7 +506,7 @@ void ReducedOrderModeling::setSnapshotMat()
 
     Info<<"The w snapshot matrix is set. "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
-    if(mode_=="nonlinear"  && useLSPG==0)
+    if(mode_=="nonlinear"  && romUseSVDRes)
     {
         Info<<"Setting the r snapshot matrix. "<<runTime_.elapsedClockTime()<<" s"<<endl;
 
@@ -782,7 +766,7 @@ void ReducedOrderModeling::solveOfflineNonlinear()
 
     this->getPhiMatStateInfo(svdPhiWMat_);
 
-    if(useLSPG==0) this->solveSVD(rSnapshotMat_,svdPhiRMat_,"svdPhiRMat");
+    if(romUseSVDRes) this->solveSVD(rSnapshotMat_,svdPhiRMat_,"svdPhiRMat");
 
     if (debugMode) this->getMatrixColNorms(svdPhiWMat_,"svdPhiWMat");
 
@@ -1376,8 +1360,10 @@ void ReducedOrderModeling::solveNK()
     scalar rVecNorm;
     scalar rTol=romNKGMRESRTol;
     scalar aTol=1.0e-12;
-    // reduced Jacobians
+    // reduced Jacobians 
     Mat rdRdW,rdRdWPC;
+    // reduced Jacobian matrix based
+    Mat AMatMB;
     // total residual norm including all variables
     scalar totalResNorm0;
     scalar totalResNorm;
@@ -1390,21 +1376,34 @@ void ReducedOrderModeling::solveNK()
     for(label i=0;i<adjIO_.nkGMRESMaxIters+1;i++) nkHHist[i]=0.0;
 
     // create reduced Jacobian and set function evaluation 
-    MatCreateMFFD(PETSC_COMM_WORLD,PETSC_DECIDE,PETSC_DECIDE,nSamples,nSamples,&rdRdW);
-    MatMFFDSetFunction(rdRdW,FormFunction,this);
+    if(romNKGMRESMF)
+    {
+        // create matrix free matrix
+        MatCreateMFFD(PETSC_COMM_WORLD,PETSC_DECIDE,PETSC_DECIDE,nSamples,nSamples,&rdRdW);
+        MatMFFDSetFunction(rdRdW,FormFunction,this);
+        // manually set the FD step size for matrix free
+        if (romNKMFFDH > 0.0) MatMFFDSetCheckh(rdRdW,ComputeMFFDH,this);
+        // initialize and calculate rdRdWPC
+        this->initializeReducedJacobian(&rdRdWPC);
+        adjIO_.readMatrixBinary(rdRdWPC,"rdRdWPC");
+        if (debugMode) adjIO_.writeMatrixASCII(rdRdWPC,"rdRdWPC");
+    }
+    else
+    {
+        MatCreate(PETSC_COMM_WORLD,&AMatMB);
+        MatSetSizes(AMatMB,PETSC_DECIDE,PETSC_DECIDE,nSamples,nSamples);
+        MatSetFromOptions(AMatMB);
+        MatMPIAIJSetPreallocation(AMatMB,nSamples,NULL,nSamples,NULL);
+        MatSeqAIJSetPreallocation(AMatMB,nSamples,NULL);
+        MatSetUp(AMatMB);
+        MatZeroEntries(AMatMB);
+    }
 
-    if (romNKMFFDH > 0.0) MatMFFDSetCheckh(rdRdW,ComputeMFFDH,this);
-
-    // initialize and calculate rdRdWPC
-    this->initializeReducedJacobian(&rdRdWPC);
     // save the unperturb residual statistics as reference
-    // we will verify against this reference to ensure consistent residuals after perturbing
-    // and resetting states
+    // we will verify against this reference to ensure consistent 
+    // residuals after perturbing and resetting states
     adjDev_.calcFlowResidualStatistics("set");
     adjDev_.calcFlowResidualStatistics("print");
-    //this->calcReducedJacobian(rdRdWPC); 
-    adjIO_.readMatrixBinary(rdRdWPC,"rdRdWPC");
-    if (debugMode) adjIO_.writeMatrixASCII(rdRdWPC,"rdRdWPC");
 
     // first compute/assign the initial wVec and rVec and compute the initial totalResNorm0
     VecZeroEntries(wVecReduced_);
@@ -1434,7 +1433,11 @@ void ReducedOrderModeling::solveNK()
     adjOptions.add("GMRESAbsTol",aTol);
     adjOptions.add("printInfo",0);
     //Info<<adjOptions<<endl;
-    adjDev_.createMLRKSP(&ksp,rdRdW,rdRdWPC,adjOptions);
+    if(romNKGMRESMF)
+    {
+        adjDev_.createMLRKSP(&ksp,rdRdW,rdRdWPC,adjOptions);
+    }
+    
 
     // initialize objFuncs
     HashTable<scalar> objFuncs;
@@ -1457,7 +1460,7 @@ void ReducedOrderModeling::solveNK()
         "  NK  ",
         1.0,
         0.0,
-        1.0,
+        0,
         scalar(adjDev_.getRunTime()),
         turbResNormFull,
         totalResNormFull,
@@ -1481,21 +1484,31 @@ void ReducedOrderModeling::solveNK()
             break;
         }
 
+        if(romNKGMRESMF)
+        {
+            // before solving the ksp, form the baseVector for matrix-vector products.
+            // Note: we need to apply normalize-states to the baseVector
+            // Note that we also scale the dRdW*psi 
+            // in AdjointNewtonKrylov::FormFunction
+            VecCopy(rVecReduced_,rVecReducedBase); 
+            //this->setNormalizeStatesScaling2Vec(rVecBase);
+            MatMFFDSetBase(rdRdW,wVecReduced_,rVecReducedBase);
+            // for each major iteration, update the dRdWPhi matrix for LSPG
+            if (useLSPG) this->calcdRdWPhiMF(dRdWPhi_);
+            MatMFFDSetHHistory(rdRdW,nkHHist,nkHN);
+        }
+        else
+        {
+            // for each major iteration, update the dRdWPhi matrix for LSPG
+            this->calcdRdWPhiMF(dRdWPhi_);
+            if (useLSPG) MatTransposeMatMult(dRdWPhi_,dRdWPhi_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&AMatMB);
+            else MatTransposeMatMult(svdPhiWMat_,dRdWPhi_,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&AMatMB);
+            //KSPDestroy(&ksp);
+            adjDev_.createMLRKSP(&ksp,AMatMB,AMatMB,adjOptions);
+        }
+
         // set up rGMRESHist to save the tolerance history for the GMRES solution
         KSPSetResidualHistory(ksp,rGMRESHist,nGMRESIters,PETSC_TRUE);
-        // set up the FD step history and print it for debugging
-        MatMFFDSetHHistory(rdRdW,nkHHist,nkHN);
-
-        // before solving the ksp, form the baseVector for matrix-vector products.
-        // Note: we need to apply normalize-states to the baseVector
-        // Note that we also scale the dRdW*psi 
-        // in AdjointNewtonKrylov::FormFunction
-        VecCopy(rVecReduced_,rVecReducedBase); 
-        //this->setNormalizeStatesScaling2Vec(rVecBase);
-        MatMFFDSetBase(rdRdW,wVecReduced_,rVecReducedBase);
-
-        // for each major iteration, update the dRdWPhi matrix for LSPG
-        if (useLSPG) this->calcdRdWPhiMF(dRdWPhi_);
 
         // solve the linear system
         // we should use rVec0 as the rhs, however, we need to normalize
@@ -1541,7 +1554,7 @@ void ReducedOrderModeling::solveNK()
             "  NK  ",
             stepSize,
             linRes,
-            1.0,
+            GMRESIters,
             scalar(adjDev_.getRunTime()),
             turbResNormFull,
             totalResNormFull,
@@ -1585,7 +1598,6 @@ void ReducedOrderModeling::solveNK()
     adjIO_.writeVectorASCII(wVecReduced_,"wVecReduced");
     
 }
-
 
 scalar ReducedOrderModeling::NKLineSearch
 (
@@ -2181,7 +2193,7 @@ void ReducedOrderModeling::printConvergenceInfo
         }
         printInfo += "\n";
 
-        printInfo +=   "| Main | Func | Solv |  Step  |   Lin   |   CFL   |   RunTime   |  Res Norm  |  Res Norm  |  Res Norm  |";
+        printInfo +=   "| Main | Func | Solv |  Step  |   Lin   |   Lin   |   RunTime   |  Res Norm  |  Res Norm  |  Res Norm  |";
         forAll(objFuncs.toc(),idxI)
         {
             word key = objFuncs.toc()[idxI];
@@ -2191,7 +2203,7 @@ void ReducedOrderModeling::printConvergenceInfo
         }
         printInfo += "\n";
 
-        printInfo +=   "| Iter | Eval | Type |        |   Res   |         |   (s)       |  (Turb)    |  (Full)    |  (Reduced) |";
+        printInfo +=   "| Iter | Eval | Type |        |   Res   |   Its   |   (s)       |  (Turb)    |  (Full)    |  (Reduced) |";
         forAll(objFuncs.toc(),idxI)
         {
             word key = objFuncs.toc()[idxI];

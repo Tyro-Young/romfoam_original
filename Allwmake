@@ -5,6 +5,8 @@ if [ -z "$ROM_CompileMode" ]; then
     export ROM_CompileMode=Opt
 fi
 
+echo "Compiling ROMFoam: $ROM_CompileMode Mode"
+
 function makeSolvers() 
 {
     sed -e '1d' Make/options_orig > Make/options
@@ -26,13 +28,13 @@ function makeIncompressible()
     fi
     sed -e '1d' Make/options_Incompressible > Make/options
     sed -i '4i\    \-DIncompressibleFlow \\' Make/options
-    if [ "$DF_CompileMode" = "Debug" ]; then
+    if [ "$ROM_CompileMode" = "Debug" ]; then
         sed -i '4i\    \-DFULLDEBUG -g -O0 \\' Make/options
     fi
     wmake dep
     cp Make/options_Incompressible Make/options
     sed -i '4i\    \-DIncompressibleFlow \\' Make/options
-    if [ "$DF_CompileMode" = "Debug" ]; then
+    if [ "$ROM_CompileMode" = "Debug" ]; then
         sed -i '4i\    \-DFULLDEBUG -g -O0 \\' Make/options
     fi
     wmake 
@@ -47,6 +49,9 @@ cd ../../
 
 cd applications/solvers/simpleROMFoam
 makeIncompressible
+
+cd ../utilities
+./Allwmake
 
 #cd ../../doc
 #./Allwmake

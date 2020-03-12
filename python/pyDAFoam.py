@@ -1042,6 +1042,8 @@ class PYDAFOAM(AeroSolver):
                     'romnklsfullres':[int,0],
                     'romnkmaxits':[int,20],
                     'romnkmffdh':[float,-9999.0],
+                    'romnkgmresmf':[int,1],
+                    'romusesvdres':[int,0],
                     
                     # objectiveFunctionOptions
                     'objfuncgeoinfo':[list,[['wall'],['wall']]], # objfuncgeoinfo is a listlist
@@ -5423,6 +5425,8 @@ class PYDAFOAM(AeroSolver):
             f.write('useMF           %d;\n'%self.getOption('usemf'))
             f.write('debugMode       %d;\n'%self.getOption('debugmode'))
             f.write('mfStep          %e;\n'%self.getOption('mfstep'))
+            f.write('romNKGMRESMF    %d;\n'%self.getOption('romnkgmresmf'))
+            f.write('romUseSVDRes    %d;\n'%self.getOption('romusesvdres'))
             f.write('romNKAbsTol     %e;\n'%self.getOption('romnkabstol'))
             f.write('romNKGMRESRTol  %e;\n'%self.getOption('romnkgmresrtol'))
             f.write('romNKGMRESMaxLS %d;\n'%self.getOption('romnkgmresmaxls'))
