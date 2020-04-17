@@ -50,7 +50,7 @@ cd ../../
 cd applications/solvers/simpleROMFoam
 makeIncompressible
 
-cd ../utilities
+cd ../../utilities
 ./Allwmake
 
 #cd ../../doc

@@ -12,7 +12,6 @@ using namespace Foam;
 
 int main(int argc, char *argv[])
 {
-    Info<<"Assigning Mean Fields to Instantaneous Fields"<<endl;
 
     argList::addOption
     (
@@ -25,6 +24,7 @@ int main(int argc, char *argv[])
     #include "createTime.H"
     #include "createMesh.H"
 
+    Info<<"Assigning Mean Fields to Instantaneous Fields"<<endl;
     // read options
     List<wordRe> varNames;
     if (args.optionFound("varNames"))

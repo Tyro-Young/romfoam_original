@@ -4,7 +4,7 @@ exec=mpirun
 nProcs=2
 solver=simpleROMFoam
 runEndTime=500
-avgFieldEvery=-1
+avgFieldEvery=100
 nSamples=5
 refSample=$nSamples
 nDVs=1
@@ -63,18 +63,24 @@ for n in `seq 1 1 $nSamples`; do
 
   cd ../sample$n
   # deform the mesh
-  $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
+  $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=train --nSamples=$nSamples --runEndTime=$runEndTime --avgFieldEvery=$avgFieldEvery
   # run checkMesh for mesh quality
   $exec -np $nProcs checkMesh $pFlag > checkMeshLog
   # run the flow solver
   $exec -np $nProcs $solver $pFlag > flowLog
+  if [ $avgFieldEvery -gt 0 ]; then
+    echo "Assigning mean to inst fields..."
+    sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
+    $exec -np $nProcs meanToInstFields -varNames '(U p phi)'  $pFlag > meanToInstFieldsLog
+    $exec -np $nProcs $solver -mode evalObj $pFlag > evalObjLog
+  fi
   cat objFuncs.dat
   cd ../runROM
   
 done
 
 # deform the mesh to the reference point (last CFD sample)
-$exec -np $nProcs python runFlow.py --task=deform --sample=$nSamples --mode=train --nSamples=$nSamples --runEndTime=$runEndTime
+$exec -np $nProcs python runFlow.py --task=deform --sample=$nSamples --mode=train --nSamples=$nSamples --runEndTime=$runEndTime --avgFieldEvery=$avgFieldEvery
 sleep 3
 
 # link the simulations results from the CFD samples to runROM folder such that 
@@ -95,7 +101,7 @@ else
 fi
 # modify the parameters in and controlDict because we want to use the 
 # flow field from the latest sample to compute the preconditioner matrix
-sed -i "/startFrom/c\    startFrom       latestTime;" system/controlDict
+sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
 
 # run the offlineROM
 $exec -np $nProcs $solver -mode offlineNonlinear $pFlag
@@ -131,7 +137,7 @@ for n in $predictSamples; do
   cd ../prediction$n
 
   # deform but not running the flow, now the geometry is predict sample but the based field is at refSample
-  $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=predict --nSamples=$nSamples --runEndTime=$runEndTime
+  $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=predict --nSamples=$nSamples --runEndTime=$runEndTime --avgFieldEvery=$avgFieldEvery
 
   # we want the onlineROM to use the latest CFD sample as the initial field
   sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
@@ -144,6 +150,12 @@ for n in $predictSamples; do
   sed -i "/startFrom/c\startFrom       startTime;" system/controlDict
   sed -i "/solveAdjoint/c\solveAdjoint           false;" system/adjointDict
   $exec -np $nProcs $solver $pFlag > flowLog_${n}
+  if [ $avgFieldEvery -gt 0 ]; then
+    echo "Assigning mean to inst fields..."
+    sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
+    $exec -np $nProcs meanToInstFields -varNames '(U p phi)'  $pFlag > meanToInstFieldsLog
+    $exec -np $nProcs $solver -mode evalObj $pFlag > evalObjLog
+  fi
 
   # print the result from CFD for reference
   cat objFuncs.dat

@@ -16,7 +16,7 @@ cd applications/solvers/simpleROMFoam
 wclean
 rm Make/options
 
-cd ../utilities
+cd ../../utilities
 ./Allwclean
 
 #cd ../../doc

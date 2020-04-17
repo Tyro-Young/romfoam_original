@@ -59,6 +59,7 @@ int main(int argc, char *argv[])
         Info<<"mode arg not found! Use the default -mode flow"<<endl
             <<"Options are:"<<endl
             <<"flow"<<endl
+            <<"evalObj"<<endl
             <<"offlineLinear"<<endl 
             <<"onlineLinear"<<endl
             <<"offlineNonlinear"<<endl
@@ -131,11 +132,19 @@ int main(int argc, char *argv[])
         adjObj.writeObjFuncValues();
     
     }
+    else if (mode=="evalObj")
+    {
+        Info<<"Evaluating the objective functions..."<<endl;
+        adjObj.printObjFuncValues();
+        Info<<"Writting the objective functions to disk..."<<endl;
+        adjObj.writeObjFuncValues();
+    }
     else 
     {
         Info<<"-mode "<<mode<<" arg not valid!"<<endl
             <<"Options are:"<<endl
             <<"flow"<<endl
+            <<"evalObj"<<endl
             <<"offlineLinear"<<endl 
             <<"onlineLinear"<<endl
             <<"offlineNonlinear"<<endl
