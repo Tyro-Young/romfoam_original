@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-
-rm -rf html
-rm OF_ROM_Doc.html
