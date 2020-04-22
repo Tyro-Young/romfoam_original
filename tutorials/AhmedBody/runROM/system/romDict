@@ -24,9 +24,14 @@ svdRequestedN   5;
 useMF           1;
 debugMode       0;
 mfStep          1.000000e-06;
+romNKGMRESMF    1;
+romUseSVDRes    0;
 romNKAbsTol     1.000000e-08;
 romNKGMRESRTol  1.000000e-02;
+romNKGMRESMaxLS 5;
+romNKLSFullRes  0;
 romNKMaxIts     20;
 useLSPG         0;
+romNKMFFDH      -9.999000e+03;
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

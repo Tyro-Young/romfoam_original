@@ -37,11 +37,11 @@ ROMFoam depends on multiple prerequisites, to install ROMFoam
 
    sh ./Allclean.sh && sh run_reg_tests.sh
 
- The regression test should take about 10 minutes and you should see::
+  The regression test should take about 10 minutes and you should see::
 
    Regression test: Linear ROM...
    Success!
    Regression test: Nonlinear ROM...
    Success!
 
- If the test takes more than 10 minutes or any of the test fails, check the log file in reg_file_* for details. Make sure you pass the regression test before using ROMFoam!
+  If the test takes more than 10 minutes or any of the test fails, check the log file in reg_file_* for details. Make sure you pass the regression test before using ROMFoam!
