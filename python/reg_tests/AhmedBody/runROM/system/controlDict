@@ -61,5 +61,18 @@ functions
         lRef                1.000000;
         Aref                0.056016;
     } 
+    fieldAverage1 
+    { 
+        type                fieldAverage;
+        libs                ("libfieldFunctionObjects.so");
+        writeControl        writeTime;
+        restartOnRestart    false;
+        restartOnOutput     false;
+        periodicRestart     true;
+        restartPeriod       1000;
+        fields
+        (
+        );
+     }
 } 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

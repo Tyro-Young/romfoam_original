@@ -110,15 +110,16 @@ for n in $predictSamples; do
   sed -i "/nFFDPoints/c\    nFFDPoints           $nDVs;" system/adjointDict
   sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
   $exec -np $nProcs $solver -mode onlineLinear $pFlag
-  echo "CD: 0.402314020616319 (ROM Ref)"
+  cp objFuncs.dat ../runROM
+  #echo "CD: 0.402314020616319 (ROM Ref)"
 
   # now run the flow at the predict sample, overwrite the variable at refSample
-  echo "Run the flow at sample = $n"
-  sed -i "/startFrom/c\startFrom       startTime;" system/controlDict
-  sed -i "/solveAdjoint/c\solveAdjoint           false;" system/adjointDict
-  $exec -np $nProcs $solver $pFlag > flowLog_${n}
-  more objFuncs.dat
-  echo "CD 0.402910900706668 (ROM Ref)"
+  #echo "Run the flow at sample = $n"
+  #sed -i "/startFrom/c\startFrom       startTime;" system/controlDict
+  #sed -i "/solveAdjoint/c\solveAdjoint           false;" system/adjointDict
+  #$exec -np $nProcs $solver $pFlag > flowLog_${n}
+  #more objFuncs.dat
+  #echo "CD 0.402910900706668 (ROM Ref)"
   
   cd ../runROM
 

@@ -25,7 +25,7 @@ ROMFoam depends on multiple prerequisites, to install ROMFoam
 
    source $HOME/.bashrc
  
-- Finally, download the ROMFoam repo, rename it to romfoam and put it in the $HOME/repos folder, load the OpenFOAM environment::
+- Now, download the ROMFoam repo, rename it to romfoam and put it in the $HOME/repos folder, load the OpenFOAM environment::
  
    source $HOME/OpenFOAM/OpenFOAM-v1812/etc/bashrc
 
@@ -33,5 +33,15 @@ ROMFoam depends on multiple prerequisites, to install ROMFoam
    
    ./Allwmake
 
+- Finally, verify the installation by going to romfoam/python/reg_test/AhmedBody/runROM, and run::
 
-  
+   sh ./Allclean.sh && sh run_reg_tests.sh
+
+ The regression test should take about 10 minutes and you should see::
+
+   Regression test: Linear ROM...
+   Success!
+   Regression test: Nonlinear ROM...
+   Success!
+
+ If the test takes more than 10 minutes or any of the test fails, check the log file in reg_file_* for details. Make sure you pass the regression test before using ROMFoam!

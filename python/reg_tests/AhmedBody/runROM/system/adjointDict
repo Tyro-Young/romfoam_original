@@ -19,7 +19,7 @@ flowOptions
 {
     flowCondition          Incompressible;
     setFlowBCs             false;
-    flowBCs                { useWallFunction true; bc4 {patch inlet; variable epsilon; value (2.16);} bc5 {patch inlet; variable nuTilda; value (0.00015);} bc0 {patch inlet; variable U; value (20.0 0.0 0.0);} bc1 {patch outlet; variable p; value (0.0);} bc2 {patch inlet; variable k; value (0.06);} bc3 {patch inlet; variable omega; value (400.0);} }
+    flowBCs                { useWallFunction true; bc0 {patch inlet; variable U; value (20.0 0.0 0.0);} }
     inletPatches           (inlet);
     outletPatches          (outlet);
     derivUInInfo           {stateName U; component 0; type fixedValue;patchNames (inlet ); }
