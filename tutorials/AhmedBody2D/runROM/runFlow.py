@@ -23,11 +23,12 @@ from idwarp import *
 # =============================================================================
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", help='Output directory', type=str,default='../output')
-parser.add_argument("--opt", help="optimizer to use", type=str, default='slsqp')
 parser.add_argument("--task", help="type of run to do", type=str, default='run')
 parser.add_argument('--optVars',type=str,help='Vars for the optimizer',default="['rampAngleAndRideHeight']")
 parser.add_argument('--sample',type=int,help='which sample DV to run',default=1)
 parser.add_argument('--mode',type=str,help='can be either train or predict',default='train')
+parser.add_argument('--runEndTime',type=int,help='number of time steps for flow',default=500)
+parser.add_argument('--avgFieldEvery',type=int,help='average obj and field every ? steps',default=-1)
 parser.add_argument('--nSamples',type=int,help='number of samples',default=1)
 args = parser.parse_args()
 exec('optVars=%s'%args.optVars)
@@ -37,8 +38,17 @@ gcomm = MPI.COMM_WORLD
 
 sample=args.sample-1
 
+if args.avgFieldEvery>0:
+    useAvg=True
+    avgFrom=args.runEndTime-args.avgFieldEvery
+    avgFields=['U','p','phi']
+else:
+    useAvg=False
+    avgFrom=0
+    avgFields=[]
+
 if gcomm.rank==0:
-    print(sample,optVars)
+    print((sample,optVars))
 
 # NOTE: put the ref angle at the end of this list because we will use startFrom latestTime in system/controlDict 
 if optVars[0]=='rampAngle':
@@ -118,8 +128,7 @@ if args.mode=='predict':
     deltaDVs=DVs_Predict[sample]-DVs_Train[-1]
     deltaDVs=deltaDVs.tolist()
 elif args.mode=='train': 
-    if gcomm.rank==0:
-        deltaDVs=[0.0]
+    deltaDVs=[0.0]
 
 
 # Set the parameters for optimization
@@ -143,8 +152,12 @@ aeroOptions = {
     'adjointsolver':           'simpleROMFoam',
     'rasmodel':                'SpalartAllmarasFv3',
     'flowcondition':           'Incompressible',
-    'maxflowiters':            1000, 
-    'writeinterval':           1000,
+    'maxflowiters':            args.runEndTime, 
+    'writeinterval':           args.runEndTime,
+    'avgobjfuncs':             useAvg,
+    'avgobjfuncsstart':        avgFrom,
+    'avgfields':               avgFields,
+    'avgfieldsevery':          args.avgFieldEvery,
     'setflowbcs':              False, 
     'inletpatches':            ['inlet'],
     'outletpatches':           ['outlet'],
@@ -169,6 +182,8 @@ aeroOptions = {
     'debugmode':0,
     'uselspg':0,
     'romnkabstol':1e-8,
+    'romnkmaxits':             20,
+    'romnkgmresmaxls':         5,
 
     # adjoint setup
     'adjdvtypes':              ['FFD'], 
@@ -180,7 +195,6 @@ aeroOptions = {
     
     ########## misc setup ##########
     'mpispawnrun':             False,
-    'restartopt':              False,
 
 }
 
@@ -367,14 +381,8 @@ if task.lower() == 'run':
     funcs,fail = optFuncs.aeroFuncs(xDV)
 
     if gcomm.rank == 0:
-        print funcs
-    
-    # Evaluate the sensitivities
-    #funcsSens = {}
-    #funcsSens,fail = optFuncs.aeroFuncsSens(xDV,funcs)
-    
-    #if gcomm.rank == 0:
-    #    print funcsSens
+        print(funcs)
+
 
 elif task.lower() == 'writedelmat':
 
@@ -388,7 +396,7 @@ elif task.lower() == 'writedelmat':
 
 
     if gcomm.rank == 0:
-        print ("write deltaVolPointsMat at sample=%d"%sample)
+        print(("write deltaVolPointsMat at sample=%d"%sample))
         print(xDV)
 
     DVGeo.setDesignVars(xDV)
@@ -408,7 +416,7 @@ elif task.lower() == 'deform':
 
 
     if gcomm.rank == 0:
-        print ("Deforming at sample=%d"%sample)
+        print(("Deforming at sample=%d"%sample))
         print(xDV)
 
     DVGeo.setDesignVars(xDV)

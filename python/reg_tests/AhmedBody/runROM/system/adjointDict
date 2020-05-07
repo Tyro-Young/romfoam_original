@@ -19,13 +19,13 @@ flowOptions
 {
     flowCondition          Incompressible;
     setFlowBCs             false;
-    flowBCs                { useWallFunction true; bc0 {patch inlet; variable U; value (20.0 0.0 0.0);} }
+    flowBCs                { bc0 {patch inlet; variable U; value (20.0 0.0 0.0);} useWallFunction true; }
     inletPatches           (inlet);
     outletPatches          (outlet);
     derivUInInfo           {stateName U; component 0; type fixedValue;patchNames (inlet ); }
     userDefinedPatchInfo   { }
     userDefinedVolumeInfo  { }
-    referenceValues        (ARef 5.601600e-02 magURef 2.000000e+01 pRef 0.000000e+00 rhoRef 1.000000e+00 LRef 1.000000e+00 );
+    referenceValues        (magURef 2.000000e+01 ARef 5.601600e-02 rhoRef 1.000000e+00 pRef 0.000000e+00 LRef 1.000000e+00 );
     divDev2                true;
     useNKSolver            false;
     nkSegregatedTurb       false;
@@ -84,7 +84,7 @@ adjointOptions
     epsDerivVis            1.000000e-08;
     stateScaling           ();
     residualScaling        ();
-    maxResConLv4JacPCMat   ( eRes 2 DRes 2 gammaIntRes 2 URes 2 p_rghRes 2 ReThetatRes 2 epsilonRes 2 nuTildaRes 2 kRes 2 GRes 2 omegaRes 2 pRes 2 phiRes 1 TRes 2);
+    maxResConLv4JacPCMat   ( URes 2 pRes 2 p_rghRes 2 phiRes 1 nuTildaRes 2 kRes 2 omegaRes 2 epsilonRes 2 ReThetatRes 2 gammaIntRes 2 TRes 2 eRes 2 GRes 2 DRes 2);
     adjDVTypes             (FFD);
 }
 

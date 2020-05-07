@@ -18,7 +18,6 @@ FoamFile
 
 libs
 (
-    "libbuoyantPressureFvPatchScalarField.so" 
     "libDummyTurbulenceModelIncompressible.so" 
     "libSpalartAllmarasFv3Incompressible.so" 
 );

@@ -38,7 +38,7 @@ gcomm = MPI.COMM_WORLD
 sample=args.sample-1
 
 if gcomm.rank==0:
-    print(sample,optVars)
+    print((sample,optVars))
 
 # NOTE: put the ref angle at the end of this list because we will use startFrom latestTime in system/controlDict 
 if optVars[0]=='rampAngle':
@@ -356,7 +356,7 @@ if task.lower() == 'run':
     funcs,fail = optFuncs.aeroFuncs(xDV)
 
     if gcomm.rank == 0:
-        print funcs
+        print(funcs)
 
 elif task.lower() == 'writedelmat':
 
@@ -370,7 +370,7 @@ elif task.lower() == 'writedelmat':
 
 
     if gcomm.rank == 0:
-        print ("write deltaVolPointsMat at sample=%d"%sample)
+        print(("write deltaVolPointsMat at sample=%d"%sample))
         print(xDV)
 
     DVGeo.setDesignVars(xDV)
@@ -390,7 +390,7 @@ elif task.lower() == 'deform':
 
 
     if gcomm.rank == 0:
-        print ("Deforming at sample=%d"%sample)
+        print(("Deforming at sample=%d"%sample))
         print(xDV)
 
     DVGeo.setDesignVars(xDV)

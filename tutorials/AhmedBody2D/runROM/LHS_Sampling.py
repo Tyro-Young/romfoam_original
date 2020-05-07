@@ -11,7 +11,7 @@ sampling = LHS(xlimits=xlimits,criterion='cm')
 num = 40
 x = sampling(num)
 
-print(x.shape)
+print((x.shape))
 print(x)
 plt.plot(x[:, 0], x[:, 1], "o")
 plt.xlabel("x")
