@@ -42,13 +42,22 @@ There are two options to install ROMFoam: **pre-compiled package** and **source 
    
     exit
 
-   **NOTE:** Because we use Docker, everytime you want to run a ROMFoam job, you need to login to the Docker container, download the latest ROMFoam repo and compile it, i.e., doing this::
+   **NOTE:** Because we use Docker, everytime you want to run a ROMFoam job, you need to login to the Docker container, download the latest ROMFoam repo and compile it, i.e., do this::
 
-    docker run -it --rm -u dafoamuser -v $HOME:/home/dafoamuser/mount -w /home/dafoamuser/mount dafoam/opt-packages:latest bash && \
+    docker run -it --rm -u dafoamuser -v $HOME:/home/dafoamuser/mount -w /home/dafoamuser/mount dafoam/opt-packages:latest bash
+
+   Then do::
+
     cd $HOME/repos && \
     git clone https://github.com/mdolab/romfoam && \
     cd romfoam && \
     ./Allwmake
+
+   When you run jobs, you can ignore OpenMPI warnings like::
+
+    libibverbs.so.1: cannot open shared object file
+   
+   
 
 #. **Source code**
 

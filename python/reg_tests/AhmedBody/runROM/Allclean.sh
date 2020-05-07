@@ -10,4 +10,3 @@ rm -rf constant/polyMesh
 rm -rf processor*
 rm -rf {1..9}*
 rm -rf ../sample* ../prediction*
-rm -rf reg_file*
