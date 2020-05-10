@@ -13,7 +13,6 @@ do
             rm -rf jobFinished runCheckMesh* runFlowSolver* runAdjointSolver* runColoring
             rm -rf processor*
             rm -rf {1..9}*
-            killall -9 foamRun.sh
             rm -rf ../sample* ../prediction*
             exit
             ;;

@@ -4,6 +4,7 @@ exec=mpirun
 nProcs=1
 solver=simpleROMFoam
 runEndTime=1000
+avgFieldEvery=200
 nSamples=10
 refSample=$nSamples
 nDVs=2
@@ -23,26 +24,38 @@ fi
 # runOffline
 #####################################################
 
+pFlag='-parallel'
+if [ $nProcs -eq 1 ]; then
+  pFlag=' '
+fi
+
+# Generate CFD samples
 for n in `seq 1 1 $nSamples`; do
 
   rm -rf ../sample$n
   cp -r ../runROM ../sample$n
 
   cd ../sample$n
-  killall -9 foamRun.sh
-  ./foamRun.sh $exec $nProcs $solver &
-  sleep 3
-  $exec -np $nProcs python runFlow.py --task=run --sample=$n --mode=train --nSamples=$nSamples
-  killall -9 foamRun.sh
-  sleep 3
-
+  # deform the mesh
+  $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=train --nSamples=$nSamples --runEndTime=$runEndTime --avgFieldEvery=$avgFieldEvery
+  # run checkMesh for mesh quality
+  $exec -np $nProcs checkMesh $pFlag > checkMeshLog
+  # run the flow solver
+  $exec -np $nProcs $solver $pFlag > flowLog
+  if [ $avgFieldEvery -gt 0 ]; then
+    echo "Assigning mean to inst fields..."
+    sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
+    $exec -np $nProcs meanToInstFields -varNames '(U p phi)'  $pFlag > meanToInstFieldsLog
+    $exec -np $nProcs $solver -mode evalObj $pFlag > evalObjLog
+  fi
+  cat objFuncs.dat
   cd ../runROM
   
 done
 
-$exec -np $nProcs python runFlow.py --task=writedelmat --sample=$nSamples --mode=train --nSamples=$nSamples
+$exec -np $nProcs python runFlow.py --task=writedelmat --sample=$nSamples --mode=train --nSamples=$nSamples --runEndTime=$runEndTime  --avgFieldEvery=$avgFieldEvery
 sleep 3
-$exec -np $nProcs python runFlow.py --task=deform --sample=$nSamples --mode=train --nSamples=$nSamples
+$exec -np $nProcs python runFlow.py --task=deform --sample=$nSamples --mode=train --nSamples=$nSamples --runEndTime=$runEndTime  --avgFieldEvery=$avgFieldEvery
 sleep 3
 
 if [ $nProcs -gt 1 ]; then
@@ -65,11 +78,8 @@ sed -i "/useColoring/c\    useColoring           true;" system/adjointDict
 sed -i "/nFFDPoints/c\    nFFDPoints           $nDVs;" system/adjointDict
 sed -i "/startFrom/c\    startFrom       latestTime;" system/controlDict
 
-if [ $nProcs -eq 1 ]; then
-  $solver -mode offlineLinear
-else
-  $exec -np $nProcs $solver -mode offlineLinear -parallel
-fi
+# run the offlineROM
+$exec -np $nProcs $solver -mode offlineLinear $pFlag
 
 ######################################################
 # runOnline
@@ -78,13 +88,8 @@ fi
 # calc refFields
 rm -rf processor*
 rm -rf {1..100}
-killall -9 foamRun.sh
-./foamRun.sh $exec $nProcs $solver &
-sleep 3
-$exec -np $nProcs python runFlow.py --task=run --sample=$refSample --mode=train --nSamples=$nSamples
-killall -9 foamRun.sh
-sleep 3
-
+$exec -np $nProcs python runFlow.py --task=deform --sample=$refSample --mode=train --nSamples=$nSamples --runEndTime=$runEndTime  --avgFieldEvery=$avgFieldEvery
+$exec -np $nProcs $solver $pFlag > flowLog
 
 for n in $predictSamples; do
 
@@ -93,29 +98,29 @@ for n in $predictSamples; do
   cd ../prediction$n
 
   # deform but not running the flow, now the geometry is predict sample but the based field is at refSample
-  $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=predict --nSamples=$nSamples
+  $exec -np $nProcs python runFlow.py --task=deform --sample=$n --mode=predict --nSamples=$nSamples --runEndTime=$runEndTime --avgFieldEvery=$avgFieldEvery
 
   # run ROM, output UROM variables
   sed -i "/solveAdjoint/c\solveAdjoint           true;" system/adjointDict
   sed -i "/useColoring/c\useColoring           true;" system/adjointDict
   sed -i "/nFFDPoints/c\    nFFDPoints           $nDVs;" system/adjointDict
   sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
-  if [ $nProcs -eq 1 ]; then
-    $solver -mode onlineLinear
-  else
-    $exec -np $nProcs $solver -mode onlineLinear -parallel
-  fi
+
+  # run onlineROM, output UROM variables
+  $exec -np $nProcs $solver -mode onlineLinear $pFlag
 
   # now run the flow at the predict sample, overwrite the variable at refSample
   echo "Run the flow at sample = $n"
   sed -i "/startFrom/c\startFrom       startTime;" system/controlDict
   sed -i "/solveAdjoint/c\solveAdjoint           false;" system/adjointDict
-  if [ $nProcs -eq 1 ]; then
-    $solver > flowLog_${n}
-  else
-    $exec -np $nProcs $solver -parallel > flowLog_${n}
+  $exec -np $nProcs $solver $pFlag > flowLog_${n}
+  if [ $avgFieldEvery -gt 0 ]; then
+    echo "Assigning mean to inst fields..."
+    sed -i "/startFrom/c\startFrom       latestTime;" system/controlDict
+    $exec -np $nProcs meanToInstFields -varNames '(U p phi)'  $pFlag > meanToInstFieldsLog
+    $exec -np $nProcs $solver -mode evalObj $pFlag > evalObjLog
   fi
-  more objFuncs.dat
+  cat objFuncs.dat
 
   cd ../runROM
 
