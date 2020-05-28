@@ -1,0 +1,77 @@
+/*--------------------------------*- C++ -*---------------------------------*\ 
+| ========                 |                                                 | 
+| \      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           | 
+|  \    /   O peration     | Version:  v1812                                 | 
+|   \  /    A nd           | Web:      www.OpenFOAM.com                      | 
+|    \/     M anipulation  |                                                 | 
+\*--------------------------------------------------------------------------*/ 
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      controlDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+
+libs
+(
+    "libDummyTurbulenceModelIncompressible.so" 
+    "libSpalartAllmarasFv3Incompressible.so" 
+);
+
+application     simpleROMFoam;
+startFrom       latestTime;
+startTime       0;
+stopAt          endTime;
+endTime         200;
+deltaT          1;
+writeControl    timeStep;
+writeInterval   200;
+purgeWrite      0;
+writeFormat     ascii;
+writePrecision  16;
+writeCompression on;
+timeFormat      general;
+timePrecision   16;
+runTimeModifiable true;
+
+functions
+{ 
+    forceCoeffs
+    { 
+        type                forceCoeffs;
+        libs                ("libforces.so");
+        writeControl        timeStep;
+        timeInterval        1;
+        log                 yes;
+        patches             (wing);
+        pName               p;
+        UName               U;
+        rho                 rhoInf;
+        rhoInf              1.000000;
+        dragDir             (1.0000000000 0.0000000000 0.0000000000);
+        liftDir             (0.0000000000 1.0000000000 0.0000000000);
+        CofR                (0.000000 0.000000 0.000000);
+        pitchAxis           (0 1 0);
+        magUInf             10.000000;
+        lRef                1.000000;
+        Aref                0.100000;
+    } 
+    fieldAverage1 
+    { 
+        type                fieldAverage;
+        libs                ("libfieldFunctionObjects.so");
+        writeControl        writeTime;
+        restartOnRestart    false;
+        restartOnOutput     false;
+        periodicRestart     true;
+        restartPeriod       1000;
+        fields
+        (
+        );
+     }
+} 
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

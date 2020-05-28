@@ -1,25 +1,6 @@
 #!/usr/bin/env bash
 # Compile DAFoam
 
-function makeIncompressible() 
-{
-    if [ -f Make/files_Incompressible ]; then
-        cp Make/files_Incompressible Make/files
-    fi
-    sed -e '1d' Make/options_Incompressible > Make/options
-    sed -i '4i\    \-DIncompressibleFlow \\' Make/options
-    if [ "$ROM_CompileMode" = "Debug" ]; then
-        sed -i '4i\    \-DFULLDEBUG -g -O0 \\' Make/options
-    fi
-    wmake dep
-    cp Make/options_Incompressible Make/options
-    sed -i '4i\    \-DIncompressibleFlow \\' Make/options
-    if [ "$ROM_CompileMode" = "Debug" ]; then
-        sed -i '4i\    \-DFULLDEBUG -g -O0 \\' Make/options
-    fi
-    wmake 
-}
-
 echo "************** Compiling prerequisite Libraries **************"
 sleep 1
 
@@ -31,5 +12,5 @@ cd ../
 echo "************** Compiling Incompressible Adjoint Solvers **************"
 sleep 1
 
-makeIncompressible
+wmake
 

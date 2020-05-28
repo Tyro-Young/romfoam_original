@@ -6,5 +6,4 @@ cd myLibs
 cd ../
 
 wclean
-rm Make/options Make/files
 

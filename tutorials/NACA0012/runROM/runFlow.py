@@ -1,17 +1,15 @@
 #!/usr/bin/env python
 """
-ROMFoam run script for the Ahmed body case
+ROMFoam run script for the NACA0012 airfoil at low-speed
 """
 
 # =================================================================================================
 # Imports
 # =================================================================================================
-import os, time
+import os
 import argparse
-import sys
 import numpy as np
 from mpi4py import MPI
-from baseclasses import *
 from romfoam import *
 from pygeo import *
 from pyspline import *
@@ -24,7 +22,7 @@ from idwarp import *
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", help="Output directory", type=str, default="../output")
 parser.add_argument("--task", help="type of run to do", type=str, default="run")
-parser.add_argument("--optVars", type=str, help="Vars for the optimizer", default="['rampAngle']")
+parser.add_argument("--optVars", type=str, help="Vars for the optimizer", default="['twist']")
 parser.add_argument("--sample", type=int, help="which sample DV to run", default=1)
 parser.add_argument("--mode", type=str, help="can be either train or predict", default="train")
 parser.add_argument("--runEndTime", type=int, help="number of time steps for flow", default=500)
@@ -38,68 +36,14 @@ gcomm = MPI.COMM_WORLD
 
 sample = args.sample - 1
 
-if args.avgFieldEvery > 0:
-    useAvg = True
-    avgFrom = args.runEndTime - args.avgFieldEvery
-    avgFields = ["U", "p", "phi"]
-else:
-    useAvg = False
-    avgFrom = 0
-    avgFields = []
-
 if gcomm.rank == 0:
     print((sample, optVars))
 
 # NOTE: put the ref angle at the end of this list because we will use startFrom latestTime in system/controlDict
-if optVars[0] == "rampAngle":
+if optVars[0] == "twist":
     # 5 samples, 1 DV
-    DVs_Train = [[5.0], [10.0], [15.0], [25.0], [20.0]]
-    DVs_Predict = [[15.0], [21.0]]
-elif optVars[0] == "rideHeight":
-    # 5 samples, 1 DV
-    DVs_Train = [[0.03], [0.04], [0.06], [0.07], [0.05]]
-    DVs_Predict = [[0.07], [0.03]]
-elif optVars[0] == "rampAngleAndRideHeight":
-    # 10 samples, 2 DVs
-    DVs_Train = [
-        [24.1, 0.045],
-        [25.3, 0.049],
-        [25.7, 0.043],
-        [25.1, 0.059],
-        [25.5, 0.055],
-        [24.5, 0.041],
-        [24.3, 0.053],
-        [24.7, 0.057],
-        [25.9, 0.047],
-        [24.9, 0.051],
-    ]
-    DVs_Predict = [[25.7, 0.043], [24.1, 0.045]]
-elif optVars[0] == "shape":
-    # 20 samples, 4 DVs
-    DVs_Train = [
-        [0.00625, 0.04625, 0.04875, 0.02875],
-        [0.01625, 0.02625, 0.04375, 0.03375],
-        [0.03125, 0.02125, 0.02375, 0.01875],
-        [0.03375, 0.01375, 0.03625, 0.00125],
-        [0.00125, 0.00875, 0.02125, 0.00375],
-        [0.04625, 0.00625, 0.00875, 0.01125],
-        [0.01125, 0.03625, 0.01125, 0.03625],
-        [0.03875, 0.00375, 0.04625, 0.04375],
-        [0.02625, 0.02375, 0.03375, 0.04875],
-        [0.04375, 0.03375, 0.02625, 0.01625],
-        [0.02125, 0.03875, 0.01625, 0.02375],
-        [0.04125, 0.04375, 0.03875, 0.03875],
-        [0.00375, 0.04125, 0.01875, 0.00875],
-        [0.04875, 0.01875, 0.03125, 0.04625],
-        [0.02875, 0.00125, 0.04125, 0.04125],
-        [0.02375, 0.04875, 0.01375, 0.00625],
-        [0.03625, 0.01625, 0.00375, 0.01375],
-        [0.01875, 0.03125, 0.00625, 0.03125],
-        [0.00875, 0.01125, 0.00125, 0.02625],
-        [0.01375, 0.02875, 0.02875, 0.02125],
-        [0.00125, 0.00875, 0.02125, 0.00375],
-    ]
-    DVs_Predict = [[0.00875, 0.01125, 0.00125, 0.02625], [0.02125, 0.03875, 0.01625, 0.02375]]
+    DVs_Train = [[1.0], [3.0], [7.0], [9.0], [5.0]]
+    DVs_Predict = [[4.0], [6.0]]
 else:
     print("optVars not valid")
     exit(1)
@@ -121,35 +65,38 @@ if args.mode == "predict":
 elif args.mode == "train":
     deltaDVs = [0.0]
 
+UmagIn = 10.0
+CL_star = 0.5
+twist0 = 4.193339
 
-# Set the parameters for optimization
+evalFuncs = ["CD"]
+
+# Set the parameters
 aeroOptions = {
     # output options
-    "casename": "AhmedBody_" + task + "_" + optVars[0],
+    "casename": "NACA0012_" + task + "_" + optVars[0],
     "outputdirectory": outputDirectory,
     "writesolution": True,
     "usecoloring": False,
     "printalloptions": False,
     # design surfaces and cost functions
     "designsurfacefamily": "designSurfaces",
-    "designsurfaces": ["body"],
-    "objfuncs": ["CD"],
-    "objfuncgeoinfo": [["body"]],
-    "referencevalues": {"magURef": 20.0, "ARef": 0.056016, "rhoRef": 1.0, "pRef": 0.0, "LRef": 1.0},
+    "designsurfaces": ["wing"],
+    "objfuncs": ["CD", "CL"],
+    "objfuncgeoinfo": [["wing"], ["wing"]],
+    "referencevalues": {"magURef": UmagIn, "ARef": 0.1, "LRef": 1.0, "pRef": 0.0, "rhoRef": 1.0},
+    "liftdir": [0.0, 1.0, 0.0],
+    "dragdir": [1.0, 0.0, 0.0],
     # flow setup
     "adjointsolver": "simpleROMFoam",
     "rasmodel": "SpalartAllmarasFv3",
     "flowcondition": "Incompressible",
     "maxflowiters": args.runEndTime,
     "writeinterval": args.runEndTime,
-    "avgobjfuncs": useAvg,
-    "avgobjfuncsstart": avgFrom,
-    "avgfields": avgFields,
-    "avgfieldsevery": args.avgFieldEvery,
-    "setflowbcs": False,
-    "inletpatches": ["inlet"],
-    "outletpatches": ["outlet"],
-    "flowbcs": {"bc0": {"patch": "inlet", "variable": "U", "value": [20.0, 0.0, 0.0]}, "useWallFunction": "true"},
+    "setflowbcs": True,
+    "inletpatches": ["inout"],
+    "outletpatches": ["inout"],
+    "flowbcs": {"bc0": {"patch": "inout", "variable": "U", "value": [UmagIn, 0.0, 0.0]}, "useWallFunction": "true"},
     # romDict
     "nsamples": args.nSamples,
     "deltaffd": deltaDVs,
@@ -160,8 +107,9 @@ aeroOptions = {
     "usemf": 1,
     "mfstep": 1e-6,
     "debugmode": 0,
-    "uselspg": 0,
-    "romnkabstol": 1e-8,
+    "uselspg": 1,
+    "romnkgmresmf": 0,
+    "romnkabstol": 1e-1,
     "romnkmaxits": 20,
     "romnkgmresmaxls": 5,
     # adjoint setup
@@ -179,130 +127,37 @@ aeroOptions = {
 meshOptions = {
     "gridFile": os.getcwd(),
     "fileType": "openfoam",
+    'useRotations': False,
     # point and normal for the symmetry plane
-    "symmetryPlanes": [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]],
+    "symmetryPlanes": [[[0.0, 0.0, 0.0], [0.0, 0.0, 1.0]], [[0.0, 0.0, 0.1], [0.0, 0.0, 1.0]]],
 }
 
 # =================================================================================================
 # DVGeo
 # =================================================================================================
-FFDFile = "./FFD/bodyFittedFFD.xyz"
+FFDFile = "./FFD/wingFFD.xyz"
 DVGeo = DVGeometry(FFDFile)
-x = [0.000, 0.100, 0.843, 1.044]
-y = [0.100, 0.100, 0.100, 0.100]
-z = [0.194, 0.194, 0.194, 0.147]
+
+# ref axis
+x = [0.25, 0.25]
+y = [0.00, 0.00]
+z = [0.00, 0.10]
 c1 = pySpline.Curve(x=x, y=y, z=z, k=2)
 DVGeo.addRefAxis("bodyAxis", curve=c1, axis="z")
 
 
-def rampAngle(val, geo):
-
-    C = geo.extractCoef("bodyAxis")
-
-    # the value will be ramp angle in degree.
-    # start with a conversion to rads
-    angle = (val[0]) * np.pi / 180.0
-
-    # Overall length needs to stay a 1.044, so use that as a ref for
-    # the final mesh point
-
-    # set the target length
-    lTarget = 0.222
-    hInit = 0.246 - 0.05
-
-    # compute the coefficient deltas
-    dx = lTarget * np.cos(angle)
-    dz = lTarget * np.sin(angle)
-
-    topEdge = 0.338 - dz
-    rearHeight = topEdge - 0.05
-    coefPoint = rearHeight / 2.0 + 0.05
-    scalez = rearHeight / hInit
-
-    # Set the coefficients
-    C[3, 0] = 1.044
-    C[2, 0] = C[3, 0] - dx
-    C[2, 2] = 0.194
-    C[3, 2] = coefPoint
-
-    geo.restoreCoef(C, "bodyAxis")
-
-    geo.scale_z["bodyAxis"].coef[3] = scalez
-
-    return
+def twist(val, geo):
+    # Set all the twist values
+    for i in range(2):
+        geo.rot_z["bodyAxis"].coef[i] = -val[0]
 
 
-def rampAngleAndRideHeight(val, geo):
-
-    C = geo.extractCoef("bodyAxis")
-
-    # the value will be ramp angle in degree.
-    # start with a conversion to rads
-    angle = (val[0]) * np.pi / 180.0
-
-    # Overall length needs to stay a 1.044, so use that as a ref for
-    # the final mesh point
-
-    # set the target length
-    lTarget = 0.222
-    hInit = 0.246 - 0.05
-
-    # compute the coefficient deltas
-    dx = lTarget * np.cos(angle)
-    dz = lTarget * np.sin(angle)
-
-    topEdge = 0.338 - dz
-    rearHeight = topEdge - 0.05
-    coefPoint = rearHeight / 2.0 + 0.05
-    scalez = rearHeight / hInit
-
-    # Set the coefficients
-    C[3, 0] = 1.044
-    C[2, 0] = C[3, 0] - dx
-    C[2, 2] = 0.194
-    C[3, 2] = coefPoint
-
-    geo.restoreCoef(C, "bodyAxis")
-
-    geo.scale_z["bodyAxis"].coef[3] = scalez
-
-    rideHeight = val[1]
-    for i in range(len(C)):
-        if i >= 2:
-            C[i, 2] = C[i, 2] + (rideHeight - 0.05) * scalez
-        else:
-            C[i, 2] = C[i, 2] + rideHeight - 0.05
-    geo.restoreCoef(C, "bodyAxis")
-
-    return
-
-
-def rideHeight(val, geo):
-
-    C = geo.extractCoef("bodyAxis")
-    rideHeight = val[0]
-    for i in range(len(C)):
-        C[i, 2] = C[i, 2] + rideHeight - 0.05
-    geo.restoreCoef(C, "bodyAxis")
-
-    return
-
-
-if optVars[0] == "rampAngle":
-    DVGeo.addGeoDVGlobal(optVars[0], DVs0, rampAngle, lower=1.0, upper=50.0, scale=1.0)
-elif optVars[0] == "rideHeight":
-    DVGeo.addGeoDVGlobal(optVars[0], DVs0, rideHeight, lower=0.0, upper=1.0, scale=1.0)
-elif optVars[0] == "rampAngleAndRideHeight":
-    DVGeo.addGeoDVGlobal(optVars[0], DVs0, rampAngleAndRideHeight, lower=0.0, upper=50.0, scale=1.0)
-elif optVars[0] == "shape":
-    # Select points
-    iVol = 2  # iVol=2; ramp of the Ahmed body
-    pts = DVGeo.getLocalIndex(iVol)
-    indexList = pts[1:, 1:, -1].flatten()  # select the top layer FFD starts with i=1
-    PS = geo_utils.PointSelect("list", indexList)
-    # setup local design variables, lower and upper are the bounds for the FFD points
-    DVGeo.addGeoDVLocal(optVars[0], lower=0.0, upper=0.05, axis="z", scale=1.0, pointSelect=PS)
-
+# select points
+pts = DVGeo.getLocalIndex(0)
+indexList = pts[:, :, :].flatten()
+PS = geo_utils.PointSelect("list", indexList)
+# DVGeo.addGeoDVLocal("shapey", lower=-1.0, upper=1.0, axis="y", scale=1.0, pointSelect=PS)
+DVGeo.addGeoDVGlobal("twist", twist0, twist, lower=-10.0, upper=10.0, scale=1.0)
 
 # =================================================================================================
 # DAFoam
@@ -322,7 +177,6 @@ for key in xDVs.keys():
     nDVs += len(xDVs[key])
 CFDSolver.setOption("nffdpoints", nDVs)
 
-
 # =================================================================================================
 # DVCon
 # =================================================================================================
@@ -332,16 +186,6 @@ DVCon.setDVGeo(DVGeo)
 surf = [p0, v1, v2]
 DVCon.setSurface(surf)
 # DVCon.writeSurfaceTecplot('trisurface.dat')
-
-
-# =================================================================================================
-# optFuncs
-# =================================================================================================
-optFuncs.CFDSolver = CFDSolver
-optFuncs.DVGeo = DVGeo
-optFuncs.DVCon = DVCon
-optFuncs.evalFuncs = evalFuncs
-optFuncs.gcomm = gcomm
 
 # =================================================================================================
 # Task

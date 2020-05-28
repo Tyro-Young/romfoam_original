@@ -1461,7 +1461,7 @@ void ReducedOrderModeling::solveNK()
         1.0,
         0.0,
         0,
-        scalar(adjDev_.getRunTime()),
+        scalar(mesh_.time().elapsedCpuTime()),
         turbResNormFull,
         totalResNormFull,
         totalResNorm
@@ -1555,7 +1555,7 @@ void ReducedOrderModeling::solveNK()
             stepSize,
             linRes,
             GMRESIters,
-            scalar(adjDev_.getRunTime()),
+            scalar(mesh_.time().elapsedCpuTime()),
             turbResNormFull,
             totalResNormFull,
             totalResNorm

@@ -1,54 +1,15 @@
 #!/usr/bin/env bash
 # Compile OF_ROM
 
-if [ -z "$ROM_CompileMode" ]; then
-    export ROM_CompileMode=Opt
-fi
-
-echo "Compiling ROMFoam: $ROM_CompileMode Mode"
-
-function makeSolvers() 
-{
-    sed -e '1d' Make/options_orig > Make/options
-    if [ "$ROM_CompileMode" = "Debug" ]; then
-        sed -i '4i\    \-DFULLDEBUG -g -O0 \\' Make/options
-    fi
-    wmake dep
-    cp Make/options_orig Make/options
-    if [ "$ROM_CompileMode" = "Debug" ]; then
-        sed -i '4i\    \-DFULLDEBUG -g -O0 \\' Make/options
-    fi
-    wmake 
-}
-
-function makeIncompressible() 
-{
-    if [ -f Make/files_Incompressible ]; then
-        cp Make/files_Incompressible Make/files
-    fi
-    sed -e '1d' Make/options_Incompressible > Make/options
-    sed -i '4i\    \-DIncompressibleFlow \\' Make/options
-    if [ "$ROM_CompileMode" = "Debug" ]; then
-        sed -i '4i\    \-DFULLDEBUG -g -O0 \\' Make/options
-    fi
-    wmake dep
-    cp Make/options_Incompressible Make/options
-    sed -i '4i\    \-DIncompressibleFlow \\' Make/options
-    if [ "$ROM_CompileMode" = "Debug" ]; then
-        sed -i '4i\    \-DFULLDEBUG -g -O0 \\' Make/options
-    fi
-    wmake 
-}
-
 cd src/DAFoam4ROM
 ./Allwmake
 
 cd ../ReducedOrderModeling
-makeSolvers
+wmake
 cd ../../
 
 cd applications/solvers/simpleROMFoam
-makeIncompressible
+wmake
 
 cd ../../utilities
 ./Allwmake

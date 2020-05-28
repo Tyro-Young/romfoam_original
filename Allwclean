@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # Clean OF_ROM
 
-rm *.pyc
-rm python/*.pyc
+rm -rf python/__pycache__/
 
 cd src/ReducedOrderModeling
 wclean
-rm Make/options
 
 cd ../DAFoam4ROM
 ./Allwclean
@@ -14,11 +12,8 @@ cd ../../
 
 cd applications/solvers/simpleROMFoam
 wclean
-rm Make/options
 
 cd ../../utilities
 ./Allwclean
 
-#cd ../../doc
-#./Allwclean
 
