@@ -1,8 +1,8 @@
 cd SpalartAllmarasFv3
 wclean
-rm Make/options Make/files
+rm -rf Make/options Make/files
 cd ../dummyTurbulenceModel
 wclean
-rm Make/options Make/files
+rm -rf Make/options Make/files
 cd ../tractionDisplacement
 wclean

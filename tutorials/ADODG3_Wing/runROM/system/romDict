@@ -1,0 +1,37 @@
+/*--------------------------------*- C++ -*---------------------------------*\ 
+| ========                 |                                                 | 
+| \      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           | 
+|  \    /   O peration     | Version:  v1812                                 | 
+|   \  /    A nd           | Web:      www.OpenFOAM.com                      | 
+|    \/     M anipulation  |                                                 | 
+\*--------------------------------------------------------------------------*/ 
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      romDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+nSamples        90;
+deltaFFD        (0.000000 );
+svdType         cross;
+svdTol          1.000000e-08;
+svdMaxIts       100;
+svdRequestedN   20;
+useMF           1;
+debugMode       0;
+mfStep          1.000000e-06;
+romNKGMRESMF    1;
+romUseSVDRes    0;
+romNKAbsTol     1.000000e-01;
+romNKGMRESRTol  1.000000e-02;
+romNKGMRESMaxLS 5;
+romNKLSFullRes  0;
+romNKMaxIts     20;
+useLSPG         1;
+romNKMFFDH      -9.999000e+03;
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
