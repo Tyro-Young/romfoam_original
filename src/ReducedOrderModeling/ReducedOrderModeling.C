@@ -1762,7 +1762,7 @@ scalar ReducedOrderModeling::getEWTol
 void ReducedOrderModeling::calcReducedJacobian(Mat matIn)
 {
 
-    Info<<"Computing reduced Jacobian "<<endl;
+    Info<<"Computing reduced Jacobian "<<runTime_.elapsedClockTime()<<" s"<<endl;
     
     PetscInt Istart, Iend;
     MatGetOwnershipRange(matIn,&Istart,&Iend);
@@ -1825,7 +1825,11 @@ void ReducedOrderModeling::calcReducedJacobian(Mat matIn)
         VecZeroEntries(rVecReduced_);
         if(useLSPG)
         {
-            this->calcdRdWPhiMF(dRdWPhi_);
+            // no need to update dRdWPhi_ because it is just a preconditioner
+            // If we update it, the pc mat comoputation needs 
+            // svdRequestedN by svdRequestedN residual evaluations and will
+            // be very slow
+            // this->calcdRdWPhiMF(dRdWPhi_);
             MatMultTranspose(dRdWPhi_,rVecFull_,rVecReduced_);
         }
         else
