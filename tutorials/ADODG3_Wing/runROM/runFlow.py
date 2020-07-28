@@ -139,7 +139,7 @@ aeroOptions = {
     "debugmode": 0,
     "uselspg": 1,
     "romnkgmresmf": 0,
-    "romnkabstol": 1e-1,
+    "romnkabstol": 1e2,
     "romnkmaxits": 20,
     "romnkgmresmaxls": 5,
     # adjoint setup
