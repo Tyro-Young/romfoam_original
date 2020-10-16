@@ -59,10 +59,10 @@ class Error(Exception):
 
 class PYDAFOAM(AeroSolver):
     """
-    Create an instance of pyDAFoam to work with. 
+    Create an instance of pyDAFoam to work with.
 
     Parameters
-    ----------   
+    ----------
 
     comm : mpi4py communicator
         An optional argument to pass in an external communicator.
@@ -74,9 +74,9 @@ class PYDAFOAM(AeroSolver):
     debug : Boolean
         An optional flag to enable debugging options
 
-    """ 
+    """
 
-    def __init__(self, comm=None, options=None, debug=False): 
+    def __init__(self, comm=None, options=None, debug=False):
 
         # Information for base class:
         name = 'PYDAFOAM'
@@ -94,7 +94,7 @@ class PYDAFOAM(AeroSolver):
             entry for the grid')
 
         # Load all the option/objective/DV information:
-        defOpts = self._getDefOptions() 
+        defOpts = self._getDefOptions()
         self.imOptions = self._getImmutableOptions()
 
         # This is the real solver so dtype is 'd'
@@ -124,21 +124,21 @@ class PYDAFOAM(AeroSolver):
 
         # Since we are using an OpenFOAM solver, the problem is assumed
         # from the run directory
-        
+
         # check whether we are running in parallel
         nProc = self.comm.size
-        
+
         self.parallel = False
         if nProc > 1:
             self.parallel = True
         # end
-                
-        # setup for restartopt  
-        if self.getOption('restartopt'):            
+
+        # setup for restartopt
+        if self.getOption('restartopt'):
             self.skipFlowAndAdjointRuns = True
         else:
             self.skipFlowAndAdjointRuns = False
-            
+
         # Save the rank and number of processors
         self.rank = self.comm.rank
         self.nProcs = self.comm.size
@@ -146,7 +146,7 @@ class PYDAFOAM(AeroSolver):
         argv = sys.argv
         if self.parallel:
             argv.append('-parallel')
-       
+
         # get current directory
         dirName = os.getcwd()
 
@@ -165,47 +165,47 @@ class PYDAFOAM(AeroSolver):
 
         # set the startFrom variable
         self.solveFrom = 'startTime'
-        
+
         # set the solveAdjoint value to None to start
         self.solveAdjoint = None
-        
+
         # write a basic control and fvAdjoint file
         self._writeControlDictFile()
         self._writeAdjointDictFile()
         self._writeROMDictFile()
-         
+
         # Misc setup, e.g., copy points to points_orig for the first run
         # decompose the domain if running in parallel, running genFaceCenters and genWallFaces etc.
         self.miscSetup()
-    
+
         # read the openfoam case mesh information
-        self._readGrid(dirName)        
-    
+        self._readGrid(dirName)
+
         # get the reduced point connectivities for the base patches in the mesh
         self._computeBasicFamilyInfo()
 
-        # Add a couple of special families. 
+        # Add a couple of special families.
         self.allFamilies = 'allsurfaces'
         self.addFamilyGroup(self.allFamilies, self.basicFamilies)
-    
+
         self.allWallsGroup = 'all'
         self.addFamilyGroup(self.allWallsGroup, self.wallList)
-    
+
         # Set the design families if given, otherwise default to all
         # walls
         self.designFamilyGroup = self.getOption('designSurfaceFamily')
         if self.designFamilyGroup is None:
             self.designFamilyGroup = self.allWallsGroup
-    
+
         # Set the mesh families if given, otherwise default to all
         # walls
         self.meshFamilyGroup = self.getOption('meshSurfaceFamily')
         if self.meshFamilyGroup is None:
             self.meshFamilyGroup= self.allWallsGroup
-    
+
         self.coords0 = self.getSurfaceCoordinates(self.allFamilies)
-       
-       
+
+
         # By Default we don't have an external mesh object or a
         # geometric manipulation object
         self.mesh = None
@@ -234,16 +234,16 @@ class PYDAFOAM(AeroSolver):
         # output file counter
         self.flowRunsCounter = 0
         self.adjointRunsCounter = 0
-        
+
         # For multipoint indexing
         self.multiPointFCIndex = None
-        
+
         if self.comm.rank == 0:
             print('Done Init.')
 
         return
 
-        
+
     # ------------------------
     # Default pyDAFoam Options
     # ------------------------
@@ -263,7 +263,7 @@ class PYDAFOAM(AeroSolver):
 
         casename : str
             Name for the case to save intermediate optimization results
-        
+
         outputdirectory : str
             Output directory for saving intermediate optimization results. Do NOT set this to the current path
 
@@ -281,10 +281,10 @@ class PYDAFOAM(AeroSolver):
 
         writecompress : str
             Whether to compress the results using .gz format
-        
+
         writeformat : str
             IO format: can be either ascii or binary
-        
+
         residualcontrol : float
             Relative residual convergence tolerance (non-linear iteration tolerance) for flow solvers
 
@@ -293,39 +293,39 @@ class PYDAFOAM(AeroSolver):
 
         fvsolvers: dict
             Dictionary for solvers in fvSolution
-        
+
         consistent : bool
             Whether to use coupled p and U solution technique for flow solvers
-        
+
         divschemes : dict
             divScheme in fvSchemes for flow and adjoint
 
         gradschemes : dict
             gradScheme in fvSchemes for flow and adjoint
             Note: to limit grad use: grad(U) cellLimited Gauss linear;
-        
+
         sngradschemes : dict
             snGradScheme in fvSchemes for flow and adjoint
-        
+
         interpolationschemes : dict
             interpolationScheme in fvSchemes for flow and adjoint
-        
+
         laplacianschemes : dict
             laplacianScheme in fvSchemes for flow and adjoint
-        
+
         ddtschemes : dict
             ddtScheme in fvSchemes for flow and adjoint
-        
+
         d2dt2schemes : dict
             d2dt2Scheme in fvSchemes for flow and adjoint
-        
+
         fluxrequired : list
             fluxRequired in fvSchemes for flow and adjoint
-        
+
         divuadj : str
-            div(phi,U) scheme for adjoint only. 
-            If divuadj is non-empty, run adjoint using divuadj for div(phi,U) instead. 
-            This allows us to use 2nd order scheme to run the flow while using 1st order scheme to solve adjoint. 
+            div(phi,U) scheme for adjoint only.
+            If divuadj is non-empty, run adjoint using divuadj for div(phi,U) instead.
+            This allows us to use 2nd order scheme to run the flow while using 1st order scheme to solve adjoint.
             This is sometimes useful when the flow converges poorly.
 
         pMinFactor (pMaxFactor) : float
@@ -336,170 +336,170 @@ class PYDAFOAM(AeroSolver):
 
         fvrelaxfactors : dict
             relaxation factors for fvSolution
-        
+
         divdev2 : bool
             Whether to use the dev2 scheme. NOTE: dev2 scheme is used after OpenFOAM-2.4.x
-        
+
         walldistmethod : str
             Methods to compute wall distance
-        
+
         transproperties : dict
             Values for transportProperties, e.g., {'nu':1.5e-5,'TRef':300.0}
-        
+
         thermoproperties : dict
             Values for thermophysicalProperties, e.g., {'Pr':0.7,'molWeight':28.0}
-        
+
         thermotype : dict
             Entires for thermoType in thermophysicalProperties, e.g., {'type':'hePsiThermo','energy':'sensibleInternalEnergy'}
-        
+
         radmodel : str
             RASModel, now supports SpalartAllmaras, SpalartAllmarasFv3, kOmegaSST, kEpsilon, LaunderSharmaKE
-        
+
         rasmodelparameters: dict
             Optional turbulence parameters defined in turbulenceProperties-RAS
-        
+
         actuatoractive : int
             Whether to add actuator source terms to mimic the impact of propellers
-        
+
         actuatoradjustthrust : int
             Whether to automatically adjust the total thrust of the source terms, and let it equals to the drag of design surface
-        
+
         actuatorvolumenames : list
             List of user-defined volumes for the actuator propeller. The source terms will be then added into these volumes. Set the volume geometric information in "userdefinedvolumeinfo"
-        
+
         actuatorthrustcoeff : list
             If not adjust thrust, we can prescribe the thrust of the source terms.
-        
+
         actuatorpoverd : list
             The pitch-to-diameter of the actuator propellers. This will be used to related thrust and torque
-        
+
         actuatorrotataiondir : list
             Rotation direction of the propellers. right: the propeller is rotating towards the starboard side. left: the propeller is rotating towards the port side.
-        
+
         adjointsolver : str
             Name of the discrete adjoint solver. Currently support: adjointSolverSimpleFoam, adjointSolverBuoyantBoussinesqSimpleFoam, adjointSolverRhoSimpleFoam
-        
+
         flowcondition : str
-            Flow condition. Options are: Incompressible, Compressible  
-        
+            Flow condition. Options are: Incompressible, Compressible
+
         usecoloring : bool
             Whether to use graph coloring. Set it to false for debugging only.
 
         adjdvtypes : list
             List of adjoint design variable types. Options are UIn (inlet velocity), Xv (volume coordinates), FFD (FFD coordinates), and Vis (molecular viscosity)
-        
+
         epsderiv : float
             Finite-differene step size for partial derivative wrt state variables
-        
+
         epsderivffd : float
             Finite-differene step size for partial derivative wrt FFD coordinates
-        
+
         epsderivxv: float
             Finite-differene step size for partial derivative wrt volume coordinates
-        
+
         epsderivuin : float
             Finite-differene step size for partial derivative wrt velocity inlet
-        
+
         epsderivvis : float
             Finite-differene step size for partial derivative wrt molecular viscosity
-        
+
         jacmatordering : str
             State variable ordering strategy, can be either cell: cell-by-cell or state: state-by-state ordering
-        
+
         jacmatreordering : str
             Reordering strategy for the state Jacobian matrices. Reordering can save PC fill-in memory usage. Options are: natural: no-reordering, nd: Nested Dissection, rcm: Reverse Cuthill-McKee
-        
+
         mintoljac : float
             A lower bound to limit the min value in the Jacobian matrices
 
         maxtoljac : float
             A upper bound to limit the max value in the Jacobian matrices
-        
+
         mintolpc : float
             A lower bound to limit the min value in the PC Jacobian matrices
 
         maxtolpc : float
             A upper bound to limit the max value in the PC Jacobian matrices
-        
+
         stateresettol : float
-            Residual L2 diff tolerance for checking if the state perturbation is properly reset. Default is 1e-6. 
+            Residual L2 diff tolerance for checking if the state perturbation is properly reset. Default is 1e-6.
             Normally users don't need to change the default.
-            But if you keep getting erroring saying L2 norm not same, and you are sure you implementation is correct. Increase this number. 
-        
+            But if you keep getting erroring saying L2 norm not same, and you are sure you implementation is correct. Increase this number.
+
         tractionBCMaxIter : label
             maximal iteration number to iteratively correct D and gradD. Default is 20.
             Normally users don't need to change the default.
             If dRdWT becomes very slow, decrease this number.
-        
+
         correctwalldist : bool
             Whether to update wall distance when volume coordinates are changed
-        
+
         reducerescon4jacmat : bool
             Whether to reduce the max connectivity level for state Jacobian matrices. When set it to True, it will reduce the con level according to the values in maxresconlv4jacpcmat. One should not set it to true unless you have severe flow convergence issue. This treatment will significantly reduce the adjoint derivative accuracy.
-        
+
         maxresconlv4jacpcmat : dict
             Upper bound for the max connectivity level in PC state Jacobian matrix dRdWTPC. Reducing the max con level will reduce the memory usage when doing the ILU fill-in of PC state Jacobian, it also increases the conditioning of the PC matrix and improves convergence. Typically, we need to reduce the max con level for p to 2 and max con level for phi to 1. NOTE: when reducerescon4jacmat is set to True, we will also reduce the max con level for state Jacobian matrix dRdWT
 
         delturbprod4pcmat : bool
             Whether to delete contribution of the turbulence production terms for the PC state Jacobian matrix
-        
+
         calcpcmat : bool
             Whether to compute the PC state Jacobian matrix dRdWPC. If set it to False, we will use the state Jacobian matrix dRdWT for preconditioning
-        
+
         fastpcmat : bool
            Whether to use the OpenFoam built-in fvMatrix to assemble the PC mat, it will be fast
-        
+
         writematrices : bool
             Whether to write all partial derivative matrices and vectors to disk. This is for debugging only
 
         adjgmrescalceigen: bool
             whether to compute the preconditioned eigenvalues during the adjoint GMRES solution
-        
+
         adjgmresrestart : int
             GMRES solver restart number. Typically, we set it to adjgmresmaxiters; we never restart
-        
+
         adjglobalpciters : int
             Global Richardson iteration number. Typically, we set it to 0. Setting it to non-zero might improve convergence, but the speed becomes very slow
-        
+
         adjlocalpciters : int
             Local Richardson iteration number. Similarly, we set it to 1
-        
+
         adjasmoverlap : int
             ASM global PC overlap level. 1 is usually good. Set it to a larger value may improve convergence, but requires more memory
-        
+
         adjpcfilllevel : int
             Fill-in level of the ILU local PC. This is a critical parameter for adjoint convergence. Most of the case, 1 is enough. But if the flow converges poorly, we may need to set it to 2. The memory usage significantly increases when increasing this parameter. Don't set it to larger than 2
-        
+
         adjgmresmaxiters : int
             Max iteration number for the adjoint linear equation solution
-        
+
         adjgmresabstol : float
             Absolute tolerance of the adjoint linear equation solution
-        
+
         adjgmresreltol : float
             Relative tolerance of the adjoint linear equation solution
-        
+
         normalizeresiduals : list
             List of residual names to normalize, e.g, {'URes','pRes'}
             Note: each residual will be normalized by their cell volume or face area, if their names are found
             in the list
-        
+
         normalizestates : list
             List of state names to normalize, e.g., {'U','p'}
-        
+
         statescaling : dict
             When we need to normalize states, set the scaling factors here
-        
+
         residualscaling : dict
             This is to further scale the residual using the prescribed values here. This is to basically ensure
             that all residuals have similar magnitudes
 
         nffdpoints : int
             Number of FFD design variables. This will be used to read the eltaVolPointMatPlusEps matrix in the OpenFOAM layer
-        
+
         setflowbcs : bool
             Whether to set flow boundary conditions
-        
+
         flowbcs : dict
             When setflowbcs is set to True, give the flow boundary values here.
             The useWallFunction key denotes whether to apply appropriate wall boundary conditions to turbulence variables
@@ -511,22 +511,22 @@ class PYDAFOAM(AeroSolver):
                          'bc5':{'patch':'inlet','variable':'nuTilda','value':[1.5e-4]},
                          'bc6':{'patch':'inlet','variable':'T','value':[300.0]},
                          'useWallFunction':'true'}
-        
+
         inletpatches : list
             List of inlet patch names
-        
+
         outletpatches : list
             List of outlet patch names
 
         derivuininfo : dict
-            Information of user-defined patches for UIn derivative. 
+            Information of user-defined patches for UIn derivative.
             Example of dF/dUxInlet
                 example: {
                             'stateName':'U',
                             'component':0,
                             'patchNames':['inlet']
                           }
-        
+
         userdefinedpatchinfo : dict
             Information of user-defined patches. Currently support:
             A patch defined within a box:
@@ -548,7 +548,7 @@ class PYDAFOAM(AeroSolver):
                                                'stateName':'U',
                                                'component':0,
                                                'scale':1.0}}
-        
+
         userdefinedvolumeinfo : dict
             Information for user-defined volumes. Currently support:
             A volume defined within a cylinder:
@@ -576,27 +576,27 @@ class PYDAFOAM(AeroSolver):
                                                'radiusInner':0.1,
                                                'radiusOuter':0.5,
                                                'axis':'x'}}
-        
+
         referencevalues: dict
             Reference values for objective function computation. Fail to set appropriate reference values will get Seg Fault. Typical entities are:
-            magURef : Referene velocity magnitude used in CD, CL, CMX, CMY, CMZ, CPL. 
+            magURef : Referene velocity magnitude used in CD, CL, CMX, CMY, CMZ, CPL.
             rhoRef : Reference density. For incompressible flow, set it to 1.0. For compressible flow, set it to far field density
             pRef : Reference pressure. Always set it to 0.0
             ARef : Reference area used in CD, CL, CMX, CMY, CMZ
             LRef : Reference length used in CMX, CMY, CMZ, NUS
-        
+
         usenksolver : bool
             Whether to use NK solver
 
         nksegregatedturb : bool
             Whether to segregate turbulence var in NK
-        
+
         usenksolver : bool
             Whether to segregate phi in NK
 
         nkewrtol0 : float
             The initial tolerance for EW
-        
+
         nkewrtolmax : float
             The max tolerance for EW
 
@@ -611,13 +611,13 @@ class PYDAFOAM(AeroSolver):
 
         nkpcfilllevel : int
             ILU PC fill-in level for the NK GMRES linear solver
-        
+
         nkgmresmaxiters : int
             Max iteration number for the NK GMRES linear solver
-                
+
         nkjacmatreordering : word
             Reordering strategy for the NK state Jacobian matrices. Reordering can save PC fill-in memory usage. Options are: natural: no-reordering, nd: Nested Dissection, rcm: Reverse Cuthill-McKee
-            
+
         nkreltol : float
             Relative tolerance for the NK nonlinear solution
 
@@ -625,14 +625,14 @@ class PYDAFOAM(AeroSolver):
             Absolute tolerance for the NK nonlinear solution
 
         nkstol : float
-            S tolerance (difference between two nonliner steps) for the NK nonlinear solution 
+            S tolerance (difference between two nonliner steps) for the NK nonlinear solution
 
         nkmaxiters : int
             Max iteration number for the NK nonlinear solution
 
         nkmaxfuncevals : int
             Max function evaluations for the NK nonlinear solution
-        
+
         objfuncgeoinfo : list
             ListList of the objective function geometric information. This can be the list of design surface names or names of user-defined volumes/patches for AVGV and VARV objs
 
@@ -646,81 +646,81 @@ class PYDAFOAM(AeroSolver):
             CPL: total pressure loss coefficient for duct flows
             NUS: Nusselt number
             AVGV: averaged state variable values in a specified user-defined volume
-            VARV: variance of state variable values in a specified user-defined volume 
+            VARV: variance of state variable values in a specified user-defined volume
             AVGS: averaged state variable values over specified internal or boundary patches
 
         dragdir : list
             Vector of drag direction
-        
+
         liftdir : list
             Vector of lift direction
-        
+
         cofr : list
             Vector of center of rotation
-        
+
         rotrad : list
             rotational speed vector in rad/s
 
         meshmaxaspectratio : float
             Max tolerant mesh aspect ratio when doing checkMesh. Note we may want to relax the OpenFOAM-default tolerance a bit especially for low y+ mesh
-        
+
         meshminfacearea : float
             Min tolerant mesh face area when doing checkMesh
-        
+
         meshminvol : float
             Max tolerant mesh volume when doing checkMesh
-        
+
         meshmaxnonortho: float
             Max tolerant mesh non-orthogonal angle when doing checkMesh
-        
+
         meshmaxskewness : float
             Max tolerant mesh skewness when doing checkMesh
-        
+
         meshsurfacefamily : object
             Names of the mesh surface family (group)
-        
+
         designsurfacefamily : object
             Names of the design surface family (group)
-        
+
         designsurfaces : list
             List of design surface names
-        
+
         dummy : str
             A dummy parameter
-        
+
         objstdthres : float
             A tolerance for the standard deviation of objective function. If larger than this tol, we consider the flow not converging
-        
+
         postprocessingdir : str
             Name for postProcessing dir
-        
+
         filechecktime : float
             Time interval to check whether the flow/adjoint simulation is done. This is useful when mpispawnrun is False
-        
+
         multipointopt : bool
             Whether to run multipoint optimization
-        
+
         restartopt : bool
             Whether to restart the adjoint. If truee, it will read the logs from the outputdirectory. NOTE: always restart an optimization fromt the flow solution step. If the optimization dies at the adjoint solution step. Delete all the adjoint solution logs and the previous flow solution logs, then restart.
-        
+
         avgobjfuncs : bool
             Whether to average the objective function. This is only needed for poor flow convergence
 
         avgobjfuncsstart : int
             From which step to average the objfuncs?
-        
+
         mpispwanrun : bool
             Whether to use the spawnrun option for parallel runs. For a small number of CPUs, e.g., 4, set it to True. When running on HPC, set it to False, and use the foamRun.sh script in the tutorials.
-        
+
         runpotentialfoam : bool
             Whether to run a potentialFoam before running the flow solvers. This can prevent nan solution because of the bad initial field
-        
+
         updatemesh : bool
             Whether to update mesh. If you run an optimization, set it to True. If you just want to run the flow and adjoint, and your surface and volume mesh never change, set it to False. When testing the regression, we need to set it to False to ensure consistent mesh over different computer planforms.
-        
+
         preservepatches : list
             Patches name for preservePatches which is needed for cycic boundary conditions in parallel
-        
+
         singleprocessorfacesets : list
             Face set name for singleprocessorfacesets which is needed for cycicAMI boundary conditions in parallel
 
@@ -741,26 +741,26 @@ class PYDAFOAM(AeroSolver):
         """
         There are many options for PYDAFOAM. These technically belong in
         the __init__ function but it gets far too long so we split
-        them out. 
-        
+        them out.
+
         Note: all defOpts must be defined lower case.
         """
-        defOpts = { # a special key to add/modify default dictionary without explicitly write them all 
+        defOpts = { # a special key to add/modify default dictionary without explicitly write them all
                     'updatedefaultdicts':[dict,{}],
-                    
+
                     #Output options
                     'casename':[str,'pyDAFoamCase'],
                     'outputdirectory':[str,'../'],
                     'writesolution':[bool,False],
                     'writelinesearch':[bool,False],
                     'printalloptions':[bool,False],
-         
+
                     # controlDict
                     'maxflowiters':[int,1000],
                     'writeinterval':[int,200],
                     'writecompress':[str,'on'],
                     'writeformat':[str,'ascii'],
-                     
+
                     # fvSolution
                     'residualcontrol':[float,1.0e-20],
                     'simplecontrol':[dict,{'nNonOrthogonalCorrectors':'0',
@@ -849,7 +849,7 @@ class PYDAFOAM(AeroSolver):
                                                          'e':0.7,
                                                          'G':0.7,}}],
 
-                    
+
                     # fvSchemes
                     'divschemes':[dict,{'default':'none',
                                         'div(phi,U)':'bounded Gauss linearUpwindV grad(U)',
@@ -880,7 +880,7 @@ class PYDAFOAM(AeroSolver):
                     'laplacianschemes':[dict,{'default':'Gauss linear corrected'}],
                     'sngradschemes':[dict,{'default':'corrected'}],
                     'fluxrequired':[list,['p','p_rgh','Phi']],
-                    'divuadj':[str,''], # if divuadj is non-empty, run adjoint using divuadj instead 
+                    'divuadj':[str,''], # if divuadj is non-empty, run adjoint using divuadj instead
                     'divdev2':[bool,True],
                     'walldistmethod':[str,'meshWave'],
 
@@ -894,14 +894,14 @@ class PYDAFOAM(AeroSolver):
                                              'g':[0.0,0.0,0.0],
                                              'rhoRef':1.0,
                                              'CpRef':1005.0}],
-                    
+
                     'radiationproperties':[dict,{'absorptivity':0.5,
                                                  'emissivity':0.5,
                                                  'E':0.0,
                                                  'radiation':'off',
                                                  'radiationModel':'none',
                                                  'solverFreq':1}],
-                    
+
                     'thermoproperties':[dict,{'molWeight':28.97,
                                               'Cp':1005.0,
                                               'Hf':0.0,
@@ -909,12 +909,12 @@ class PYDAFOAM(AeroSolver):
                                               'Pr':0.7,
                                               'TRef':300.0,
                                               'Prt':1.0,}],
-                    
+
                     'thermalproperties':[dict,{'C':434.0,
                                                'k':60.5,
                                                'alpha':1.1e-5,
                                                'thermalStress':'false'}],
-                    
+
                     'mechanicalproperties':[dict,{'rho':7854.0,
                                                   'nu':0.0,
                                                   'E':2e11}],
@@ -926,7 +926,7 @@ class PYDAFOAM(AeroSolver):
                                            'axis':[0,0,1],
                                            'origin':[0,0,0],
                                            'omega':0}],
-                    
+
                     'thermotype':[dict,{'type':'hePsiThermo',
                                         'mixture':'pureMixture',
                                         'thermo':'hConst',
@@ -934,7 +934,7 @@ class PYDAFOAM(AeroSolver):
                                         'equationOfState':'perfectGas',
                                         'specie':'specie',
                                         'energy':'sensibleInternalEnergy'}],
-                    
+
                     # turbulenceProperties
                     'rasmodel':[str,'SpalartAllmaras'],
                     'rasmodelparameters':[dict,{'Cv2':'5.0',
@@ -955,7 +955,7 @@ class PYDAFOAM(AeroSolver):
                     'actuatorthrustcoeff':[list,[]],
                     'actuatorpoverd':[list,[]],
                     'actuatorrotationdir':[list,[]],
-                    
+
                     # Adjoint Options
                     'adjointsolver':[str,'adjointSolverSimpleFoam'],
                     'usecoloring':[bool,True],
@@ -995,7 +995,7 @@ class PYDAFOAM(AeroSolver):
                     'statescaling':[dict,{}],
                     'residualscaling':[dict,{}],
                     'nffdpoints':[int,0],
-                    
+
                     # Flow options
                     'setflowbcs':[bool,False],
                     'flowbcs':[dict,{}],
@@ -1026,6 +1026,8 @@ class PYDAFOAM(AeroSolver):
 
                     # romDict
                     'nsamples':[int,0],
+                    'ressamples':[int,0],
+                    'nsamplesv':[int,0],
                     'deltaffd':[list,[]],
                     'svdtype':[str,'cross'],
                     'svdtol':[float,1e-8],
@@ -1043,7 +1045,7 @@ class PYDAFOAM(AeroSolver):
                     'romnkmffdh':[float,-9999.0],
                     'romnkgmresmf':[int,1],
                     'romusesvdres':[int,0],
-                    
+
                     # objectiveFunctionOptions
                     'objfuncgeoinfo':[list,[['wall'],['wall']]], # objfuncgeoinfo is a listlist
                     'objfuncs':[list,['CD','CL']],
@@ -1058,12 +1060,12 @@ class PYDAFOAM(AeroSolver):
                     'meshminvol':[float,1.0e-16],
                     'meshmaxnonortho':[float,70.0],
                     'meshmaxskewness':[float,4.0],
-                    
+
                     # Surface definition parameters:
                     'meshsurfacefamily':[object, None],
                     'designsurfacefamily':[object, None],
                     'designsurfaces':[list,['body']],
-                                        
+
                     # misc
                     'dummy':[str,'test'],
                     'objstdthres':[float,1.0e8],
@@ -1093,8 +1095,8 @@ class PYDAFOAM(AeroSolver):
         change these. The strings for these options are placed in a set"""
 
         return ('meshSurfaceFamily', 'designSurfaceFamily')
-    
-        
+
+
     def setMultiPointFCIndex(self,index):
         self.multiPointFCIndex = index
         return
@@ -1106,14 +1108,14 @@ class PYDAFOAM(AeroSolver):
         '''
         # Setup External Warping
         nCoords = len(self.x0.flatten())
-       
+
         nCoords = self.comm.allgather(nCoords)
         offset =0
         for i in range(self.comm.rank):
             offset+=nCoords[i]
 
         meshInd = np.arange(nCoords[self.comm.rank])+offset
-        
+
         return meshInd
 
     def getPointSetName(self,apName):
@@ -1125,33 +1127,33 @@ class PYDAFOAM(AeroSolver):
 
     def setDesignVars(self,x):
         '''
-        Set the internal design variables. 
+        Set the internal design variables.
         At the moment we don't have any internal DVs to set.
-        ''' 
+        '''
         pass
-        
+
         return
-    
+
     def addVariablesPyOpt(self,optProb):
         '''
         Add the internal variables to the opt problem.
         At the moment we don't have any internal DVs to set.
         '''
-        
+
         return
 
     def __call__(self):
         '''
         Solve the flow
         '''
-        
+
         if self.getOption('multipointopt') and self.multiPointFCIndex==None:
             raise Error('multipointopt is true while multiPointFCIndex is not set')
-            
-        # For restart runs, check the logs and data in the outputdirectory, if anything is 
-        # missing, set skipFlowAndAdjointRuns to False 
+
+        # For restart runs, check the logs and data in the outputdirectory, if anything is
+        # missing, set skipFlowAndAdjointRuns to False
         if self.skipFlowAndAdjointRuns:
-            self._checkRestartLogs(logOpt=1) # check flow 
+            self._checkRestartLogs(logOpt=1) # check flow
             self._checkRestartLogs(logOpt=3) # check checkMesh
 
         # Update the internal run options
@@ -1177,22 +1179,22 @@ class PYDAFOAM(AeroSolver):
         self._writeFvSchemesFile()
         self._writeFvSolutionFile()
         self._writeROMDictFile()
-        
+
         self.comm.Barrier()
 
         # update the CFD Coordinates
-        
+
         # add point set and update the mesh based on the DV valurs
         self.ptSetName = self.getPointSetName('dummy')
         ptSetName = self.ptSetName
         if (self.DVGeo is not None) and (self.getOption('updatemesh')):
             if not ptSetName in self.DVGeo.points:
-                coords0 = self.mapVector(self.coords0, self.allFamilies, 
+                coords0 = self.mapVector(self.coords0, self.allFamilies,
                                          self.designFamilyGroup)
-                
+
                 self.DVGeo.addPointSet(coords0, self.ptSetName)
                 self.pointsSet = True
-            
+
             # set the surface coords
             if self.comm.rank == 0:
                 print(('DVGeo PointSet UpToDate: '+str(self.DVGeo.pointSetUpToDate(ptSetName))))
@@ -1203,7 +1205,7 @@ class PYDAFOAM(AeroSolver):
                 self.setSurfaceCoordinates(coords, self.designFamilyGroup)
                 if self.comm.rank == 0:
                     print(('DVGeo PointSet UpToDate: '+str(self.DVGeo.pointSetUpToDate(ptSetName))))
-                
+
                 # warp the mesh
                 if self.comm.rank == 0:
                     print ('Warping the volume mesh....')
@@ -1224,42 +1226,42 @@ class PYDAFOAM(AeroSolver):
         # end
 
 
-        # For restart runs, we can directly read checkMeshLog 
+        # For restart runs, we can directly read checkMeshLog
         # so no need to run checkMesh until self.skipFlowAndAdjointRuns==False
-        if not self.skipFlowAndAdjointRuns: 
+        if not self.skipFlowAndAdjointRuns:
             # check the mesh quality
             self.runCheckMeshQuality()
             self._copyLogs(logOpt=3) # copy for checkMesh
-        
+
         # check if mesh q failed
         outputDir = self.getOption('outputdirectory')
         if not self.getOption('multipointopt'):
-            logFileName=os.path.join(outputDir,'checkMeshLog_%3.3d'%self.flowRunsCounter)    
+            logFileName=os.path.join(outputDir,'checkMeshLog_%3.3d'%self.flowRunsCounter)
         else:
-            logFileName=os.path.join(outputDir,'checkMeshLog_FC%d_%3.3d'%(self.multiPointFCIndex,self.flowRunsCounter))    
-   
+            logFileName=os.path.join(outputDir,'checkMeshLog_FC%d_%3.3d'%(self.multiPointFCIndex,self.flowRunsCounter))
+
         self.meshQualityFailure=self.checkMeshLog(logFileName)
 
         if self.meshQualityFailure==True:
-            if self.comm.rank==0: 
+            if self.comm.rank==0:
                 print("Checking Mesh Quality. Failed!")
         else:
             if self.comm.rank==0:
                 print("Checking Mesh Quality. Passed!")
-                
+
         if self.comm.rank==0:
-            print(('Calling Flow Solver %03d'%self.flowRunsCounter))   
-             
-        # For restart runs, we can directly read objFuncs.dat 
-        # so no need to run OF solver or write logFiles until self.skipFlowAndAdjointRuns==False    
+            print(('Calling Flow Solver %03d'%self.flowRunsCounter))
+
+        # For restart runs, we can directly read objFuncs.dat
+        # so no need to run OF solver or write logFiles until self.skipFlowAndAdjointRuns==False
         if not self.skipFlowAndAdjointRuns:
-        
-            logFileName = 'flowLog' 
+
+            logFileName = 'flowLog'
             # we don't need to solve OF if mesh quality fails
             if self.meshQualityFailure==False:
                 # call the actual openfoam executable
                 self._callOpenFoamSolver(logFileName)
-                # check if we need to calculate the averaged obj funcs  
+                # check if we need to calculate the averaged obj funcs
                 if self.getOption('avgobjfuncs'):
                     self._calcAveragedObjFuncs()
 
@@ -1276,24 +1278,24 @@ class PYDAFOAM(AeroSolver):
                     origDir = '../FlowConfig%d/'%self.multiPointFCIndex
                 self._copyResults(origDir,newDir)
 
-            self._copyLogs(logOpt=1) # copy for flow 
+            self._copyLogs(logOpt=1) # copy for flow
 
         self.flowRunsCounter+=1
 
-        return 
+        return
 
     def solveADjoint(self):
         '''
         Solve the adjoint
         '''
-        
+
         if self.getOption('multipointopt') and self.multiPointFCIndex==None:
             raise Error('multipointopt is true while multiPointFCIndex is not set')
-            
-        # For restart runs, check the logs and data in the outputdirectory, if anything is 
-        # missing, set skipFlowAndAdjointRuns to False 
+
+        # For restart runs, check the logs and data in the outputdirectory, if anything is
+        # missing, set skipFlowAndAdjointRuns to False
         if self.skipFlowAndAdjointRuns:
-            self._checkRestartLogs(logOpt=2) # check adjoint 
+            self._checkRestartLogs(logOpt=2) # check adjoint
 
         self.solveFrom = 'latestTime'
         self.solveAdjoint = True
@@ -1301,9 +1303,9 @@ class PYDAFOAM(AeroSolver):
 
         divUAdj=self.getOption('divuadj')
         divSchemes=self.getOption('divschemes')
-        if len(divUAdj)!=0: 
+        if len(divUAdj)!=0:
             divUFlow=divSchemes['div(phi,U)']
-  
+
         # Update the current run control files
         self._writeAdjointDictFile()
         if self.getOption('flowcondition') == "Incompressible":
@@ -1321,7 +1323,7 @@ class PYDAFOAM(AeroSolver):
         self._writeFvSolutionFile()
         self._writeROMDictFile()
         self.comm.Barrier()
-        
+
         logFileName = 'adjointLog'
 
         if self.comm.rank==0:
@@ -1338,17 +1340,17 @@ class PYDAFOAM(AeroSolver):
                 outputDir = self.getOption('outputdirectory')
                 newDir = os.path.join(outputDir, caseName)
                 origDir = './'
-                self._copyResults(origDir,newDir)  
+                self._copyResults(origDir,newDir)
             else:
-                exit()      
+                exit()
 
-        # For restart runs, we can directly read objFuncsSens.dat 
+        # For restart runs, we can directly read objFuncsSens.dat
         # so no need to run adjoint solver or write logFiles until self.skipFlowAndAdjointRuns==False
         if not self.skipFlowAndAdjointRuns:
 
             # write the current design variable values to files
             self._writeDVs()
-        
+
             # write delta vol points
             adjDVTypes = self.getOption('adjdvtypes')
             if ("FFD" in adjDVTypes) and (self.getOption('updatemesh')):
@@ -1359,7 +1361,7 @@ class PYDAFOAM(AeroSolver):
             # if divuadj is set, we will use a different divu scheme for adjoint
             # so we need to first re-compute the flow using the 1st order scheme
             # before calling the adjoint
-            if len(divUAdj)!=0: 
+            if len(divUAdj)!=0:
                 if self.comm.rank==0:
                     print(('divuadj is set. Re-computing the flow using div(U): %s'%divUAdj))
                 # rerun the flow
@@ -1381,7 +1383,7 @@ class PYDAFOAM(AeroSolver):
                 self.comm.Barrier()
                 # call the actual openfoam executable
                 self._callOpenFoamSolver(logFileName)
-                
+
                 # resume the paramters
                 if self.comm.rank==0:
                     print(('Completed! Reset div(U) to %s'%divUFlow))
@@ -1392,7 +1394,7 @@ class PYDAFOAM(AeroSolver):
             else:
                 # call the actual openfoam executable
                 self._callOpenFoamSolver(logFileName)
-    
+
             # copy adjoint result to outputdirectory
             outputDir = self.getOption('outputdirectory')
             if self.getOption('writesolution'):
@@ -1405,24 +1407,24 @@ class PYDAFOAM(AeroSolver):
                 else:
                     origDir = '../FlowConfig%d/'%self.multiPointFCIndex
                 self._copyResults(origDir,newDir)
-            
-            self._copyLogs(logOpt=2) 
-         
+
+            self._copyLogs(logOpt=2)
+
         self.adjointRunsCounter+=1
 
         return
 
     def runPotentialFoam(self):
-                    
+
         logName='potentialFoamLog'
-        
+
         mpiSpawnRun=self.getOption('mpispawnrun')
-        
+
         if self.parallel and mpiSpawnRun:
-        
+
             # Setup the indicator file to tell the python layer that potentialFoam
             # is finished running
-            finishFile = 'potentialFoamFinished.txt' 
+            finishFile = 'potentialFoamFinished.txt'
 
             # Remove the indicator file if it exists
             if os.path.isfile(finishFile):
@@ -1435,23 +1437,23 @@ class PYDAFOAM(AeroSolver):
                     # end
                 # end
             # end
-        
+
             # write the bash script to run the solver
             scriptName = 'runPotentialFoam.sh'
-            
+
             self.writeParallelPotentialFoamScript(logName,scriptName)
             if self.comm.rank==0:
                 print("Running potentialFoam.")
-                
+
             # check if the run script exists
             while not os.path.exists(scriptName):
                 time.sleep(1)
             self.comm.Barrier()
-                
+
             # Run potentialFoam through a bash script
             child = self.comm.Spawn('sh', [scriptName],self.comm.size,
                                     MPI.INFO_NULL, root=0)
-    
+
             # Now wait for potentialFoam to finish. The bash script will create
             # the empty finishFile when it completes
             counter = 0
@@ -1460,11 +1462,11 @@ class PYDAFOAM(AeroSolver):
                 time.sleep(checkTime)
                 counter+=1
             # end
-   
+
             # Wait for all of the processors to get here
             self.comm.Barrier()
-            
-        elif not self.parallel and mpiSpawnRun: 
+
+        elif not self.parallel and mpiSpawnRun:
 
             print("Running potentialFoam.")
             f=open(logName,'w')
@@ -1472,10 +1474,10 @@ class PYDAFOAM(AeroSolver):
             f.close()
 
         elif not mpiSpawnRun:
-        
+
             finishFile='jobFinished'
             runFile = 'runPotentialFoam'
-        
+
             if self.comm.rank==0:
                 # Remove the log file if it exists
                 if os.path.isfile(logName):
@@ -1483,20 +1485,20 @@ class PYDAFOAM(AeroSolver):
                         os.remove(logName)
                     except:
                         raise Error('pyDAFoam: status %d: Unable to remove %s'%logName)
- 
+
                 # Remove the finish file
                 if os.path.isfile(finishFile):
                     try:
                         os.remove(finishFile)
                     except:
                         raise Error('pyDAFoam: status %d: Unable to remove %s'%finishFile)
-  
+
                 # now create the run File
                 fTouch=open(runFile,'w')
                 fTouch.close()
-                  
+
             self.comm.Barrier()
-            
+
             if self.comm.rank==0:
                 print("Running potentialFoam.")
 
@@ -1505,7 +1507,7 @@ class PYDAFOAM(AeroSolver):
             while not os.path.isfile(finishFile):
                 time.sleep(checkTime)
             # end
-            self.comm.Barrier()  
+            self.comm.Barrier()
 
         else:
 
@@ -1514,18 +1516,18 @@ class PYDAFOAM(AeroSolver):
         return
 
     def runCheckMeshQuality(self):
-                
+
         #self.meshQualityFailure=False
-    
+
         logName='checkMeshLog'
-        
+
         mpiSpawnRun=self.getOption('mpispawnrun')
-        
+
         if self.parallel and mpiSpawnRun:
-        
+
             # Setup the indicator file to tell the python layer that checkMesh
             # is finished running
-            finishFile = 'checkMeshFinished.txt' 
+            finishFile = 'checkMeshFinished.txt'
 
             # Remove the indicator file if it exists
             if os.path.isfile(finishFile):
@@ -1538,23 +1540,23 @@ class PYDAFOAM(AeroSolver):
                     # end
                 # end
             # end
-        
+
             # write the bash script to run the solver
             scriptName = 'runCheckMesh.sh'
-            
+
             self.writeParallelCheckMeshScript(logName,scriptName)
             if self.comm.rank==0:
                 print("Checking Mesh Quality.")
-                
+
             # check if the run script exists
             while not os.path.exists(scriptName):
                 time.sleep(1)
             self.comm.Barrier()
-                
+
             # Run checkMesh through a bash script
             child = self.comm.Spawn('sh', [scriptName],self.comm.size,
                                     MPI.INFO_NULL, root=0)
-    
+
             # Now wait for checkMesh to finish. The bash script will create
             # the empty finishFile when it completes
             counter = 0
@@ -1563,10 +1565,10 @@ class PYDAFOAM(AeroSolver):
                 time.sleep(checkTime)
                 counter+=1
             # end
-   
+
             # Wait for all of the processors to get here
             self.comm.Barrier()
-            
+
         elif not self.parallel and mpiSpawnRun:
 
             f=open(logName,'w')
@@ -1574,10 +1576,10 @@ class PYDAFOAM(AeroSolver):
             f.close()
 
         elif not mpiSpawnRun:
-        
+
             finishFile='jobFinished'
             runFile = 'runCheckMesh'
-        
+
             if self.comm.rank==0:
                 # Remove the log file if it exists
                 if os.path.isfile(logName):
@@ -1585,20 +1587,20 @@ class PYDAFOAM(AeroSolver):
                         os.remove(logName)
                     except:
                         raise Error('pyDAFoam: status %d: Unable to remove %s'%logName)
- 
+
                 # Remove the finish file
                 if os.path.isfile(finishFile):
                     try:
                         os.remove(finishFile)
                     except:
                         raise Error('pyDAFoam: status %d: Unable to remove %s'%finishFile)
-  
+
                 # now create the run File
                 fTouch=open(runFile,'w')
                 fTouch.close()
-                  
+
             self.comm.Barrier()
-            
+
             if self.comm.rank==0:
                 print("Checking Mesh Quality.")
 
@@ -1608,43 +1610,43 @@ class PYDAFOAM(AeroSolver):
                 time.sleep(checkTime)
             # end
             self.comm.Barrier()
-            
+
         else:
 
             raise Error('Parallel and MPISpawn not valid!')
 
         return
-    
-    
+
+
     def checkMeshLog(self,logName):
-        
+
         f=open(logName,'r')
         lines=f.readlines()
         f.close()
-        
+
         meshminfacearea = -1.0
         meshmaxaspectratio = 1.0e6
         meshminvol = -1.0
         meshmaxnonortho = 1.0e6
         meshmaxskewness = 1.0e6
-        
+
         val = '[-+]?[0-9]*\.?[0-9]*[e]?[-+]?[0-9]*'
         reMinSurfaceArea = re.compile(r'.*Minimum\s*face\s*area\s*[:=]?\s*(%s)\.*'%val)
         reAspectRatio = re.compile(r'.*Max\s*aspect\s*ratio\s*[:=]?\s*(%s).*'%val)
         reMinVol = re.compile(r'.*Min[imum]*?\s*[negative]*?\s*volume\s*[:=]?\s*(%s).*'%val)
         reMaxNonOrth = re.compile(r'.*Mesh\snon-orthogonality\sMax:\s(%s).*'%val)
         reMaxSkewness = re.compile(r'.*Max\sskewness\s=\s(%s).*'%val)
-        
+
         meshOK = False
         facePyramidsOK = False
         for line in lines:
-        
+
             res1 = reMinSurfaceArea.match(line)
             res2 = reAspectRatio.match(line)
             res3 = reMinVol.match(line)
             res4 = reMaxNonOrth.match(line)
             res5 = reMaxSkewness.match(line)
-            
+
             if 'Face pyramids OK.' in line:
                 facePyramidsOK = True
 
@@ -1663,31 +1665,31 @@ class PYDAFOAM(AeroSolver):
             if res5:
                 meshmaxskewness = float(res5.group(1))
                 #print meshmaxskewness
-                
+
             if 'Mesh OK' in line:
                 meshOK = True
-        
+
         if self.comm.rank == 0 and meshOK == False:
             print ("************* Warning! Mesh Quality Not Perfect! ************")
-        
+
         if ((meshmaxaspectratio >= self.getOption('meshmaxaspectratio')) or
             (meshminfacearea <= self.getOption('meshminfacearea'))  or
             (meshminvol <= self.getOption('meshminvol'))  or
             (meshmaxnonortho >= self.getOption('meshmaxnonortho'))  or
-            (meshmaxskewness >= self.getOption('meshmaxskewness')) or 
+            (meshmaxskewness >= self.getOption('meshmaxskewness')) or
             (facePyramidsOK == False) ) :
             return True
         else:
             return False
-         
-    
+
+
     def _callOpenFoamSolver(self,logFileName):
         '''
         Call the OpenFOAM executables.
-        
+
         Parameters
-        ----------   
-        
+        ----------
+
         logFileName : str
             Name of the log file
         '''
@@ -1695,15 +1697,15 @@ class PYDAFOAM(AeroSolver):
         # we dont need to solve openfoam if mesh quality does not pass
         if self.meshQualityFailure:
             return
-        
+
         # for multipoint optimization
         if self.getOption('multipointopt'):
-        
+
             if self.multiPointFCIndex==None:
                 raise Error('multiPointFCIndex not set!')
-            
+
             finishFile='jobFinished_FC%d'%self.multiPointFCIndex
-            
+
             if self.comm.rank==0:
                 # create the run files
                 if 'flowLog' in logFileName:
@@ -1714,40 +1716,40 @@ class PYDAFOAM(AeroSolver):
                     fTouch.close()
                 else:
                     raise Error('pyDAFoam: logFileName error!')
-                        
+
                 print(("Simulation Started. Check the %s file for the progress."%logFileName))
-                
+
             self.comm.Barrier()
-            
+
             # check if the job finishes
             checkTime = self.getOption('filechecktime')
             while not os.path.isfile(finishFile):
                 time.sleep(checkTime)
-            
+
             self.comm.Barrier()
-            
-            if self.comm.rank==0:    
-                # remove finish file        
+
+            if self.comm.rank==0:
+                # remove finish file
                 if os.path.isfile(finishFile):
                     try:
                         os.remove(finishFile)
                     except:
                         raise Error('pyDAFoam: status %d: Unable to remove %s'%finishFile)
-     
+
             self.comm.Barrier()
-            
+
             if self.comm.rank==0:
                 print("Simulation Finished!")
-                
+
             return
-        
-        # if it is not multipoint optimization, do the following    
+
+        # if it is not multipoint optimization, do the following
         mpiSpawnRun = self.getOption('mpispawnrun')
-        
+
         if self.parallel and mpiSpawnRun:
-            # Setup the indicator file to tell the python layer that simpleFoam 
+            # Setup the indicator file to tell the python layer that simpleFoam
             # is finished running
-            finishFile = 'foamFinished.txt' 
+            finishFile = 'foamFinished.txt'
 
             # Remove the indicator file if it exists
             if os.path.isfile(finishFile):
@@ -1756,7 +1758,7 @@ class PYDAFOAM(AeroSolver):
                         os.remove(finishFile)
                     except:
                         raise Error('pyDAFoam: Unable to remove %s'%finishFile)
-                        sys.exit(0)                    
+                        sys.exit(0)
                     # end
                 # end
             # end
@@ -1770,7 +1772,7 @@ class PYDAFOAM(AeroSolver):
             if self.comm.rank==0:
                 print(("Simulation Started. Check the %s file for the progress."%logFileName))
             self.comm.Barrier()
-            
+
             # check if the run script exists
             while not os.path.exists(scriptName):
                 time.sleep(1)
@@ -1779,7 +1781,7 @@ class PYDAFOAM(AeroSolver):
             # Run simplefoam through a bash script
             child = self.comm.Spawn('sh', [scriptName],self.comm.size,
                                     MPI.INFO_NULL, root=0)
-            
+
             # Now wait for simpleFoam to finish. The bash script will create
             # the empty finishFile when it completes
             counter = 0
@@ -1788,7 +1790,7 @@ class PYDAFOAM(AeroSolver):
                 time.sleep(checkTime)
                 counter+=1
             # end
-         
+
             # Wait for all of the processors to get here
             self.comm.Barrier()
 
@@ -1805,9 +1807,9 @@ class PYDAFOAM(AeroSolver):
                 raise Error('pyDAFoam: status %d: Unable to run %s'%(status,adjointSolver))
 
         elif not mpiSpawnRun:
-            
+
             finishFile='jobFinished'
-            
+
             if self.comm.rank==0:
                 # Remove the log file if it exists
                 if os.path.isfile(logFileName):
@@ -1822,7 +1824,7 @@ class PYDAFOAM(AeroSolver):
                         os.remove(finishFile)
                     except:
                         raise Error('pyDAFoam: status %d: Unable to remove %s'%finishFile)
-                        
+
                 # create the run files
                 if 'flowLog' in logFileName:
                     fTouch=open('runFlowSolver','w')
@@ -1831,13 +1833,13 @@ class PYDAFOAM(AeroSolver):
                     fTouch=open('runAdjointSolver','w')
                     fTouch.close()
                 else:
-                    raise Error('pyDAFoam: logFileName error!')          
-                    
+                    raise Error('pyDAFoam: logFileName error!')
+
             self.comm.Barrier()
-            
+
             if self.comm.rank==0:
                 print(("Simulation Started. Check the %s file for the progress."%logFileName))
-                        
+
             # check if the job finishes
             checkTime = self.getOption('filechecktime')
             while not os.path.isfile(finishFile):
@@ -1847,10 +1849,10 @@ class PYDAFOAM(AeroSolver):
                 print("Simulation Finished!")
 
         else:
-            
+
             raise Error('Parallel and MPISpawn not valid!')
         # end
-        
+
         return
 
     def miscSetup(self):
@@ -1863,12 +1865,12 @@ class PYDAFOAM(AeroSolver):
         # we need to decompose the domain if running in parallel
         if self.comm.rank == 0:
             print("Checking if we need to decompose the domain")
-        
+
         if self.parallel:
             if self.comm.rank == 0:
                 for i in range(self.comm.size):
                     # if any processor* is missing, we need to do the decomposePar
-                    if not os.path.exists('processor%d'%i): 
+                    if not os.path.exists('processor%d'%i):
                         # delete all processor folders
                         for j in range(self.comm.size):
                             if os.path.exists('processor%d'%j):
@@ -1883,14 +1885,14 @@ class PYDAFOAM(AeroSolver):
                         f.close()
                         if status != 0:
                             raise Error('pyDAFoam: status %d: Unable to run decomposePar'%status)
-                        break   
+                        break
         self.comm.Barrier()
-    
-        # run potentialFoam to generate a nice initial field. For y+=1 mesh, not running potentialFoam will 
+
+        # run potentialFoam to generate a nice initial field. For y+=1 mesh, not running potentialFoam will
         # have convergence issue
         if self.getOption('runpotentialfoam'):
             self.runPotentialFoam()
-    
+
         # we need to check if points_orig exists, if not, we need to copy it from points
         # this only needs to be done once
         if self.comm.rank == 0:
@@ -1904,7 +1906,7 @@ class PYDAFOAM(AeroSolver):
             pointNameOrig='points_orig'
         else:
             raise Error('writecompress not valid')
-            
+
         if self.parallel:
             if self.comm.rank == 0:
                 for i in range(self.comm.size):
@@ -1925,7 +1927,7 @@ class PYDAFOAM(AeroSolver):
                 except:
                     raise Error('pyDAFoam: Unable to copy %s to %s.'%(pointsOrig,pointsCopy))
                     sys.exit(0)
-        # wait for rank 0 
+        # wait for rank 0
         self.comm.Barrier()
 
         return
@@ -1937,7 +1939,7 @@ class PYDAFOAM(AeroSolver):
         recompute.
         '''
         missingColorings = False
-        
+
         if( self.getOption('usecoloring')):
             # We need colorings, check if they exist
             requiredColorings=[]
@@ -1950,7 +1952,7 @@ class PYDAFOAM(AeroSolver):
                 requiredColorings.append('dRdXvColoring_%d.bin'%self.nProcs)
                 for objFunc in self.getOption('objFuncs'):
                     requiredColorings.append('dFdXvColoring_%s_%d.bin'%(objFunc,self.nProcs))
-            
+
             #now check for the require coloring
             for coloring in requiredColorings:
                 if(not os.path.exists(coloring)):
@@ -1961,7 +1963,7 @@ class PYDAFOAM(AeroSolver):
 
     def computeAdjointColoring(self):
         '''
-        Run the routines to compute the coloring for the various adjoint 
+        Run the routines to compute the coloring for the various adjoint
         partial derivatives.
 
         This only needs to be run once per case.
@@ -1970,16 +1972,16 @@ class PYDAFOAM(AeroSolver):
         # Update the internal run options
         self.solveFrom = 'startTime'
         self.solveAdjoint = True
-        
+
         logFileName='coloringLog'
-        
+
         mpiSpawnRun=self.getOption('mpispawnrun')
 
         # check if a coloring computation is necessary. if not return without
         # doing anything
         if(not self._coloringComputationRequired()):
             return
-            
+
         if self.rank==0:
             print((' Colorings not found, running coloringSolver%s, check the coloringLog file for the progress.'%self.getOption('flowcondition')))
 
@@ -2002,9 +2004,9 @@ class PYDAFOAM(AeroSolver):
         self.comm.Barrier()
 
         if  self.parallel and mpiSpawnRun:
-            # Setup the indicator file to tell the python layer that coloring 
+            # Setup the indicator file to tell the python layer that coloring
             # is finished running
-            finishFile = 'coloringFinished.txt' 
+            finishFile = 'coloringFinished.txt'
 
             # Remove the indicator file if it exists
             if self.comm.rank==0:
@@ -2012,13 +2014,13 @@ class PYDAFOAM(AeroSolver):
                     try:
                         os.remove(finishFile)
                     except:
-                        raise Error('pyDAFoam: Unable to remove %s'%finishFile)  
+                        raise Error('pyDAFoam: Unable to remove %s'%finishFile)
             self.comm.Barrier()
-        
+
             # write the bash script to run the coloring
             scriptName = 'runColoring.sh'
             self.writeParallelColoringScript('coloringLog',scriptName)
-            
+
             # check if the run script exists
             while not os.path.exists(scriptName):
                 time.sleep(1)
@@ -2027,7 +2029,7 @@ class PYDAFOAM(AeroSolver):
             # Run coloring through a bash script
             child = self.comm.Spawn('sh', [scriptName],self.comm.size,
                                     MPI.INFO_NULL, root=0)
-                                    
+
             # Now wait for coloring to finish. The bash script will create
             # the empty finishFile when it completes
             checkTime = self.getOption('filechecktime')
@@ -2037,7 +2039,7 @@ class PYDAFOAM(AeroSolver):
 
             # Wait for all of the processors to get here
             self.comm.Barrier()
-        
+
         elif not self.parallel and mpiSpawnRun:
 
             f = open('coloringLog','w')
@@ -2045,12 +2047,12 @@ class PYDAFOAM(AeroSolver):
             f.close()
             if status != 0:
                 raise Error('pyDAFoam: status %d: Unable to run coloring'%status)
-            
+
         elif not mpiSpawnRun:
-        
+
             runFile  = 'runColoring'
             finishFile = 'jobFinished'
-            
+
             if self.comm.rank==0:
                 # Remove the finish file if it exists
                 if os.path.isfile(finishFile):
@@ -2058,28 +2060,28 @@ class PYDAFOAM(AeroSolver):
                         os.remove(finishFile)
                     except:
                         raise Error('pyDAFoam: Unable to remove %s'%finishFile)
-            
+
                 # Remove the log file if it exists
                 if os.path.isfile(logFileName):
                     try:
                         os.remove(logFileName)
                     except:
                         raise Error('pyDAFoam: Unable to remove %s'%logFileName)
-            
+
                 # touch the run file
                 fTouch=open(runFile,'w')
                 fTouch.close()
-                
+
             self.comm.Barrier()
-                                    
+
             # check if the job finishes
             checkTime = self.getOption('filechecktime')
             while not os.path.isfile(finishFile):
                 time.sleep(checkTime)
             self.comm.Barrier()
-            
+
         else:
-            
+
             raise Error('Parallel and MPISpawn not valid!')
 
         return
@@ -2099,7 +2101,7 @@ class PYDAFOAM(AeroSolver):
 
         In other words, if any one problem fails, the funcs['fail']
         entry will be False. This information can then be used
-        directly in the pyOptSparse. 
+        directly in the pyOptSparse.
 
         Parameters
         ----------
@@ -2124,7 +2126,7 @@ class PYDAFOAM(AeroSolver):
         """
 
         res = self._getSolution()
-        
+
         if self.comm.rank == 0:
             print(('keys',res.keys()))
         if evalFuncs is None:
@@ -2133,8 +2135,8 @@ class PYDAFOAM(AeroSolver):
 
         # Just call the regular _getSolution() command and extract the
         # ones we need:
-        
-        
+
+
         for f in evalFuncs:
             fname = self.possibleObjectives[f]
             if f in res.keys():
@@ -2144,12 +2146,12 @@ class PYDAFOAM(AeroSolver):
                 key = fname
                 funcs[key] = res[fname]
             else:
-                if not ignoreMissing:                    
+                if not ignoreMissing:
                     raise Error('Reqested function: %s is not known to pyDAFoam.'%f)
                 # end
             # end
         # end
-             
+
         # we need to call checkMeshQuality and the flow convergence before evalFunction
         # so that we can tell if the flow solver fails
         if self.meshQualityFailure or self._checkFlowFailure(evalFuncs):
@@ -2164,7 +2166,7 @@ class PYDAFOAM(AeroSolver):
         Take in a an aeroProblem and check for failure. Then append the fail
         flag in funcs.
         NOTE: this function is deprecated
-    
+
         Parameters
         ----------
         aeroProblem : pyAero_problem class
@@ -2176,27 +2178,27 @@ class PYDAFOAM(AeroSolver):
         #self.setAeroProblem(aeroProblem)
         # We also add the fail flag into the funcs dictionary. If fail
         # is already there, we just logically 'or' what was
-        # there. Otherwise we add a new entry. 
+        # there. Otherwise we add a new entry.
         failFlag = False#self.curAP.solveFailed or self.curAP.fatalFail
         if 'fail' in funcs:
             funcs['fail'] = funcs['fail'] or failFlag
         else:
             funcs['fail'] = failFlag
-    
+
     def _calcAveragedObjFuncs(self):
         '''
         Read the flowLog file and calculate the averaged value for the specified obj function.
         The averaging starts from "avgStart"
         '''
-        
+
         avgStart = self.getOption('avgobjfuncsstart')
- 
+
         maxiter = self.getOption('maxflowiters')
         if maxiter <= avgStart:
             raise Error("avgstart larger than maxflowiters!")
-        
+
         if self.comm.rank==0:
-        
+
             # get evalFuncs
             evalFuncs = self.getOption('objfuncs')
 
@@ -2204,33 +2206,33 @@ class PYDAFOAM(AeroSolver):
                 logFileName = 'flowLog'
             else:
                 logFileName = '../FlowConfig%d/flowLog'%self.multiPointFCIndex
-            
+
             if not os.path.isfile(logFileName):
                 raise Error("%s file not found!"%logFileName)
-                
+
             f=open(logFileName,'r')
             lines=f.readlines()
             f.close()
-            
+
             objFuncPrintName ={}
             for key in self.possibleObjectives.keys():
                 objFuncPrintName[key]= self.possibleObjectives[key]+":"
-            
+
             if not self.getOption('multipointopt'):
                 avgObjFileName = 'objFuncsMean.dat'
             else:
                 avgObjFileName = '../FlowConfig%d/objFuncsMean.dat'%self.multiPointFCIndex
-                                
+
             f=open(avgObjFileName,'w')
             for funcName in evalFuncs:
-            
+
                 objFunc=[]
                 for line in lines:
                     if objFuncPrintName[funcName] in line:
                         col = line.split()
                         objFunc.append(float(col[1]))
                 stepTotal = len(objFunc)
-    
+
                 objFuncMean = 0.0
                 nCount = 0
                 for i in range(stepTotal):
@@ -2238,47 +2240,47 @@ class PYDAFOAM(AeroSolver):
                         objFuncMean += objFunc[i]
                         nCount += 1
                 objFuncMean /= nCount
-                
+
                 f.write('%s %20.16f\n'%(funcName,objFuncMean))
 
             f.close()
-        
+
         self.comm.Barrier()
-         
+
         return
-         
+
     def _checkFlowFailure(self,evalFuncs):
         '''
         Read the flowLog file and check if flow converges well. This is done by calculating
         the standard deviation of the objective function. If it is above a threshold, return true
-        
+
         Parameters
         ----------
         evalFuncs : list
             List containing the names of the objective functions
         '''
-        
+
         returnFlag = False
-        
+
         outputDir = self.getOption('outputdirectory')
         if not self.getOption('multipointopt'):
-            logFileName = os.path.join(outputDir,'flowLog_%3.3d'%(self.flowRunsCounter-1))    
+            logFileName = os.path.join(outputDir,'flowLog_%3.3d'%(self.flowRunsCounter-1))
         else:
-            logFileName = os.path.join(outputDir,'flowLog_FC%d_%3.3d'%(self.multiPointFCIndex,(self.flowRunsCounter-1)))   
-        
+            logFileName = os.path.join(outputDir,'flowLog_FC%d_%3.3d'%(self.multiPointFCIndex,(self.flowRunsCounter-1)))
+
         if not os.path.isfile(logFileName):
             return True
-            
+
         f=open(logFileName,'r')
         lines=f.readlines()
         f.close()
-        
+
         objFuncPrintName ={}
         for key in self.possibleObjectives.keys():
             objFuncPrintName[key]= self.possibleObjectives[key]+":"
-        
+
         for funcName in evalFuncs:
-        
+
             objFunc=[]
             step = 0
             for line in lines:
@@ -2286,9 +2288,9 @@ class PYDAFOAM(AeroSolver):
                     col = line.split()
                     objFunc.append(col[1])
                     step +=1
-            
+
             stepStart = step*0.8 # average using the last 80% of the time steps
-            
+
             objFuncMean = 0.0
             nCount = 0
             for i in range(len(objFunc)):
@@ -2296,7 +2298,7 @@ class PYDAFOAM(AeroSolver):
                     objFuncMean += float(objFunc[i])
                     nCount += 1
             objFuncMean /= nCount
-            
+
             objFuncStd = 0.0
             nCount = 0
             for i in range(len(objFunc)):
@@ -2305,26 +2307,26 @@ class PYDAFOAM(AeroSolver):
                     nCount += 1
             objFuncStd /= nCount
             objFuncStd = objFuncStd**0.5
-            
+
             if self.comm.rank==0:
                 print((funcName+" std: "+str(objFuncStd)))
-           
+
             if objFuncStd > self.getOption('objstdthres'):
-                returnFlag = True 
-        
+                returnFlag = True
+
         return returnFlag
-            
+
     def _checkAdjointFailure(self):
         """
         Read the adjointLog file and check if adjoint converges
         """
-        
+
         outputDir = self.getOption('outputdirectory')
         if not self.getOption('multipointopt'):
-            logFileName = os.path.join(outputDir, 'adjointLog_%3.3d'%(self.adjointRunsCounter-1)) 
+            logFileName = os.path.join(outputDir, 'adjointLog_%3.3d'%(self.adjointRunsCounter-1))
         else:
-            logFileName = os.path.join(outputDir, 'adjointLog_FC%d_%3.3d'%(self.multiPointFCIndex,(self.adjointRunsCounter-1))) 
-            
+            logFileName = os.path.join(outputDir, 'adjointLog_FC%d_%3.3d'%(self.multiPointFCIndex,(self.adjointRunsCounter-1)))
+
         if not os.path.isfile(logFileName):
             if self.comm.rank==0:
                 print("adjointLog not found")
@@ -2338,34 +2340,34 @@ class PYDAFOAM(AeroSolver):
 
         parsing = False
         for line in lines:
-        
+
             if 'Solving Adjoint' in line:
                 parsing = True
-                columns = line.split() 
+                columns = line.split()
                 cfKey=columns[2]
                 adjointRes=np.empty([0])
                 adjointIter=np.empty([0])
-                
+
             if 'Total iterations' in line:
                 parsing = False
                 adjointResDict.update({cfKey:adjointRes})
                 adjointIterDict.update({cfKey:adjointIter})
-                
+
             if parsing  == True:
                 if 'Main iteration' in line:
                     line = line.strip()  # get rid of \n
                     columns = line.split() # split all the columns in one line
                     adjointRes=np.append(adjointRes,columns[6])
                     adjointIter=np.append(adjointIter,columns[2])
-            
+
         f.close()
-        
+
         if not adjointResDict: # if adjointResDict is empty return True
             return True
 
         relResTarget=self.getOption('adjgmresreltol')*100.0 # here we loose the criterion a bit
-        absResTarget=self.getOption('adjgmresabstol')*100.0 
-        
+        absResTarget=self.getOption('adjgmresabstol')*100.0
+
         returnFlag=False
         for key in adjointResDict:
             resRatio=float(adjointResDict[key][-1]) / float(adjointResDict[key][0])
@@ -2375,9 +2377,9 @@ class PYDAFOAM(AeroSolver):
                     print("adjoint convergence tolerance not satisfied")
                 returnFlag=True
                 break
-        
+
         return returnFlag
-        
+
 
     def evalFunctionsSens(self, funcsSens, evalFuncs=None):
         """
@@ -2399,14 +2401,14 @@ class PYDAFOAM(AeroSolver):
         >>> funcSens = {}
         >>> CFDsolver.evalFunctionsSens(funcSens, ['CD', 'CL'])
         """
-        
+
         # Check for evalFuncs, this should eventually have some kind of default
         if evalFuncs is None:
             print('evalFuncs not set, exiting...')
             sys.exit(0)
 
         adjDVTypes = self.getOption('adjdvtypes')
-            
+
         # Do the functions one at a time:
         for f in evalFuncs:
             if self.comm.rank == 0:
@@ -2427,7 +2429,7 @@ class PYDAFOAM(AeroSolver):
                     # Now get total derivative wrt surface cordinates
                     self.mesh.warpDeriv(dIdXv[:])
                     dIdXs = self.mesh.getdXs()#self.groupName)# should this be groupname?.
-                    dIdXs = self.mapVector(dIdXs, self.meshFamilyGroup, 
+                    dIdXs = self.mapVector(dIdXs, self.meshFamilyGroup,
                                            self.designFamilyGroup)
                     dIdx = self.DVGeo.totalSensitivity(dIdXs, ptSetName=ptSetName, comm=self.comm)
                 else:
@@ -2435,25 +2437,25 @@ class PYDAFOAM(AeroSolver):
 
                 # add to dict
                 funcsSens[key].update(dIdx)
-                
+
             if "FFD" in adjDVTypes:
                 # FFD derivatives
                 dIdx = self._readFFDSensitivity(f)
                 # add to dict
                 funcsSens[key].update(dIdx)
-                
+
             if "UIn" in adjDVTypes:
                 funcsSens[key]['UIn'] = self._readUInSensitivity(f)
 
             if "Vis" in adjDVTypes:
                 funcsSens[key]['Vis'] = self._readVisSensitivity(f)
-                
+
         # we need to check if adjoint converges, if not, return fail=true
         funcsSens['fail'] = self._checkAdjointFailure()
 
-       
+
         return
-        
+
     def updateVolumePoints(self):
         '''
         Update the vol mesh point coordinates based on the current values of design variables
@@ -2467,7 +2469,7 @@ class PYDAFOAM(AeroSolver):
                 coords0 = self.mapVector(self.coords0, self.allFamilies, self.designFamilyGroup)
                 self.DVGeo.addPointSet(coords0, self.ptSetName)
                 self.pointsSet = True
-                
+
             # set the surface coords
             #if self.comm.rank == 0:
             #    print ('DVGeo PointSet UpToDate: '+str(self.DVGeo.pointSetUpToDate(ptSetName)))
@@ -2478,12 +2480,12 @@ class PYDAFOAM(AeroSolver):
                 self.setSurfaceCoordinates(coords, self.designFamilyGroup)
                 #if self.comm.rank == 0:
                 #    print ('DVGeo PointSet UpToDate: '+str(self.DVGeo.pointSetUpToDate(ptSetName)))
-        
+
             # warp the mesh
             self.mesh.warpMesh()
 
         return
-        
+
     def writeUpdatedVolumePoints(self):
         '''
         write the vol mesh point coordinates based on the current values of design variables
@@ -2503,7 +2505,7 @@ class PYDAFOAM(AeroSolver):
         Update and write the surface points based on the current values of design variables
         NOTE: this function is depricated since it does not work in parallel. Use writeUpdatedVolumePoints instead
         '''
-               
+
         # update the CFD Coordinates
         self.ptSetName = self.getPointSetName('dummy')#self.curAP.name)
         ptSetName = self.ptSetName
@@ -2511,7 +2513,7 @@ class PYDAFOAM(AeroSolver):
             if not ptSetName in self.DVGeo.points:
                 self.DVGeo.addPointSet(self.coords0, self.ptSetName)
                 self.pointsSet = True
-            
+
             # set the surface coords
             if self.comm.rank == 0:
                 print(('DVGeo PointSet UpToDate: '+str(self.DVGeo.pointSetUpToDate(ptSetName))))
@@ -2522,7 +2524,7 @@ class PYDAFOAM(AeroSolver):
                 #self.setSurfaceCoordinates(coords, self.designFamilyGroup)
                 if self.comm.rank == 0:
                     print(('DVGeo PointSet UpToDate: '+str(self.DVGeo.pointSetUpToDate(ptSetName))))
-        
+
         ############### write points
         if self.getOption('writecompress'):
             fPoints = gzip.open('constant/polyMesh/points.gz' 'wb')
@@ -2546,18 +2548,18 @@ class PYDAFOAM(AeroSolver):
         fPoints.write('}\n')
         fPoints.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
         fPoints.write('\n')
-        
+
         fPoints.write('%d\n'%len(coords[:,0]))
         fPoints.write('(\n')
-        
+
         for i in range(len(coords[:,0])):
             fPoints.write('(%f %f %f)\n'%(coords[i,0],coords[i,1],coords[i,2]))
         fPoints.write(')\n')
-        
+
         fPoints.close()
 
-        return 
-        
+        return
+
     def _writeDeltaVolPointMatNew(self,deltaVPointThreshold=1.0E-16):
         '''
         Perturb each design variable (xDvDot) and save the delta volume point coordinates (xVDot)
@@ -2566,27 +2568,27 @@ class PYDAFOAM(AeroSolver):
         Given a xDvDot, calculate xVDot:
             xSDot = \\frac{dX_{S}}{dX_{DV}}\\xDvDot
             xVDot = \\frac{dX_{V}}{dX_{S}}\\xSDot
-            
-        ***************************    
-        It is a known issue that the warpDerivFwd function only "works" for very large perturbation 
+
+        ***************************
+        It is a known issue that the warpDerivFwd function only "works" for very large perturbation
         (e.g., 1e6) for a given xSDot. So to make it works for our purpose, we need to manually scale
-        the user-input epsFFD value up to 1e6 and then scale the result (xVDot) back for the final output 
-        NOTE: This function does NOT work very well at this moment, need to figure out a way to use 
+        the user-input epsFFD value up to 1e6 and then scale the result (xVDot) back for the final output
+        NOTE: This function does NOT work very well at this moment, need to figure out a way to use
         small perturbation
         ***************************
-        
-        
+
+
         Parameters
         ----------
         deltaVPointThreshold: float
             A threshold, any delta volume coordinates (xVDot) smaller than this value will be ignored
-            
+
         '''
-        
+
         if self.DVGeo is None:
             raise Error("DVGeo not set!")
             exit(1)
-        
+
         # Get the FFD size
         nDVs= self.getOption('nffdpoints')
         getNDVs=0
@@ -2606,16 +2608,16 @@ class PYDAFOAM(AeroSolver):
             if os.path.isfile(fileName2):
                 os.remove(fileName2)
         self.comm.Barrier()
-        
+
         # get epsFFD
         epsFFD = self.getOption('epsderivffd')
         if self.comm.rank == 0:
             print(("epsFFD: "+str(epsFFD)))
-        
+
         # get the old vol points coords, this is a single list including all the xyz coords
         oldVolPoints = self.getVolumePoints()
         nXPts = len(oldVolPoints)
-        
+
         # create the delta point mat
         plusEpsVolPointMat = PETSc.Mat().create(PETSc.COMM_WORLD)
         plusEpsVolPointMat.setSizes( ((nXPts,None),(None,nDVs)) )
@@ -2623,7 +2625,7 @@ class PYDAFOAM(AeroSolver):
         plusEpsVolPointMat.setPreallocationNNZ((nDVs,nDVs))
         plusEpsVolPointMat.setUp()
         Istart, Iend = plusEpsVolPointMat.getOwnershipRange()
-         
+
         # create xDVDot vec and initialize it with zeros
         # need to sort the key to get an unique key sequence, so that the evalFuncsSens can
         # read the sensitivity in the exact same order
@@ -2636,12 +2638,12 @@ class PYDAFOAM(AeroSolver):
             except: # if xDV[key] is just a number
                 lenDVs = 1
             xDvDot[key] = np.zeros(lenDVs,self.dtype)
-        
-        # get the original surf coords    
+
+        # get the original surf coords
         ptSetName = self.getPointSetName('dummy')
         xSDot0 = np.zeros_like(self.coords0,self.dtype)
         xSDot0 = self.mapVector(xSDot0, self.allFamilies,self.designFamilyGroup)
-        
+
         # for each DV, perturb epsFFD and save the delta vol point coordinates
         dvCol=0
         for key in sorted(xDV.keys()):
@@ -2668,8 +2670,8 @@ class PYDAFOAM(AeroSolver):
                         plusEpsVolPointMat[idx,dvCol] = deltaVal
                 # increment the mat col number to the next DV
                 dvCol+=1
-                
-        # assemble   
+
+        # assemble
         plusEpsVolPointMat.assemblyBegin()
         plusEpsVolPointMat.assemblyEnd()
         # save
@@ -2677,20 +2679,20 @@ class PYDAFOAM(AeroSolver):
         viewer(plusEpsVolPointMat)
 
         return
-        
+
     def _writeDeltaVolPointMat(self,deltaVPointThreshold=1.0E-16):
         '''
         Perturb each design variable and save the delta volume point coordinates
         to a mat, this will be used to calculate dRdFFD and dJdFFD in the OpenFOAM layer.
         NOTE: This is the finite-difference version of writeDeltaVolPointMatNew.
-        
+
         Parameters
         ----------
         deltaVPointThreshold: float
             A threshold, any delta volume coordinates smaller than this value will be ignored
-            
+
         '''
-        
+
         # Get the FFD size
         nDVs= self.getOption('nffdpoints')
         getNDVs=0
@@ -2707,7 +2709,7 @@ class PYDAFOAM(AeroSolver):
             if os.path.isfile(fileName1):
                 os.remove(fileName1)
         self.comm.Barrier()
-    
+
         # get the old vol points coords, this is a single list including all the xyz coords
         oldVolPoints = self.getVolumePoints()
         nXPts = len(oldVolPoints)
@@ -2715,7 +2717,7 @@ class PYDAFOAM(AeroSolver):
         epsFFD = self.getOption('epsderivffd')
         if self.comm.rank == 0:
             print(("epsFFD: "+str(epsFFD)))
-           
+
         # ************** perturb +epsFFD ****************
         plusEpsVolPointMat = PETSc.Mat().create(PETSc.COMM_WORLD)
         plusEpsVolPointMat.setSizes( ((nXPts,None),(None,nDVs)) )
@@ -2739,7 +2741,7 @@ class PYDAFOAM(AeroSolver):
             # loop over all the dvs in this key and perturb
             for i in range(lenDVs):
                 # perturb
-                try: 
+                try:
                     xDV[key][i]+=epsFFD
                 except:
                     xDV[key]+=epsFFD
@@ -2754,18 +2756,18 @@ class PYDAFOAM(AeroSolver):
                     deltaVal = newVolPoints[idxRel] - oldVolPoints[idxRel]
                     if abs(deltaVal) > deltaVPointThreshold: # a threshold
                         plusEpsVolPointMat[idx,dvCol] = deltaVal
-                try: 
+                try:
                     xDV[key][i]-=epsFFD
                 except:
                     xDV[key]-=epsFFD
                 dvCol+=1
-        # assemble   
+        # assemble
         plusEpsVolPointMat.assemblyBegin()
         plusEpsVolPointMat.assemblyEnd()
         # save
         viewer = PETSc.Viewer().createBinary('deltaVolPointMatPlusEps_%s.bin'%self.comm.size, 'w')
         viewer(plusEpsVolPointMat)
-    
+
         return
 
     def getVolumePoints(self):
@@ -2776,18 +2778,18 @@ class PYDAFOAM(AeroSolver):
         volPoints = self.mesh.getSolverGrid()
 
         return volPoints
-                    
+
     def _readXvSensitivity(self,obj,readCurrent=False):
         '''
         Read the coordinate sensitivity from a file.
 
         Parameters
         ----------
-        
+
         obj : str
             the name of the objective for which the sensitivity is
             required.
-        
+
         readCurrent : boolean
             whether to read the xv sens file from the current dir. if not, read it from the output dir
         '''
@@ -2805,10 +2807,10 @@ class PYDAFOAM(AeroSolver):
             objFile = 'objFuncsSens_d%sdXv_%s%3.3d.bin'%(self.possibleObjectives[obj],
                        filePrefix,self.adjointRunsCounter-1)
 
-        fileName = os.path.join(readDir,objFile) 
-        
+        fileName = os.path.join(readDir,objFile)
+
         if self.comm.rank == 0:
-            print(("Reading %s"%fileName))  
+            print(("Reading %s"%fileName))
 
         # Get the current nodes from the mesh so we know the size
         nodes = self.mesh.getCommonGrid()
@@ -2837,7 +2839,7 @@ class PYDAFOAM(AeroSolver):
 
         Parameters
         ----------
-        
+
         obj : str
             the name of the objective for which the sensitivity is
             required.
@@ -2851,22 +2853,22 @@ class PYDAFOAM(AeroSolver):
         if not nDVs == getNDVs:
             print(("Error! nffdpoints="+str(nDVs)+" while nDVs="+str(getNDVs)))
             exit(1)
-        
+
         # get file name
         outputDir = self.getOption('outputdirectory')
-        
+
         if self.getOption('multipointopt'):
             filePrefix = 'FC%d_'%self.multiPointFCIndex
         else:
             filePrefix = ''
-        
+
          # note we need to read self.adjointRunsCounter-1
         objFile = "objFuncsSens_d%sdFFD_%s%3.3d.dat"%(self.possibleObjectives[obj],filePrefix,self.adjointRunsCounter-1)
         fileName = os.path.join(outputDir,objFile)
-        
+
         if self.comm.rank == 0:
-            print(("Reading %s"%fileName)) 
- 
+            print(("Reading %s"%fileName))
+
         #read in the sensitivity file (petsc vec with matlab output format)
         f = open(fileName, 'r')
         lines = f.readlines()
@@ -2884,9 +2886,9 @@ class PYDAFOAM(AeroSolver):
 
         # assign tJtFFD
         tJtFFD = {}
-        
+
         xDVs = self.DVGeo.getValues()
-        
+
         # now loop over all the keys in sorted order and read the sens
         ffdCounterI=0
         # NOTE: we need to first sort the keys for all the local and global DVs
@@ -2894,7 +2896,7 @@ class PYDAFOAM(AeroSolver):
         for key in sorted(xDVs.keys()):
             if self.comm.rank == 0:
                 print(("Reading Function Sens for "+key))
-            
+
             # get the length of DV for this key
             lenDVs = len(xDVs[key])
             # loop over all the DVs for this key and assign
@@ -2907,7 +2909,7 @@ class PYDAFOAM(AeroSolver):
         if not ffdCounterI == nDVs:
             raise Error("nDVs is %d while ffdCounterI is %d!"%(nDVs,ffdCounterI))
             exit(1)
-                    
+
         return tJtFFD
 
     def _readUInSensitivity(self,obj):
@@ -2916,35 +2918,35 @@ class PYDAFOAM(AeroSolver):
 
         Parameters
         ----------
-        
+
         obj : str
             the name of the objective for which the sensitivity is
             required.
         '''
         # get file name
         outputDir = self.getOption('outputdirectory')
-        
+
         if self.getOption('multipointopt'):
             filePrefix = 'FC%d_'%self.multiPointFCIndex
         else:
             filePrefix = ''
 
         objFile = 'objFuncsSens_d%sdUIn_%s%3.3d.dat'%(self.possibleObjectives[obj],filePrefix,self.adjointRunsCounter-1)
-        fileName = os.path.join(outputDir,objFile) 
-        
+        fileName = os.path.join(outputDir,objFile)
+
         if self.comm.rank == 0:
-            print(("Reading %s"%fileName))   
+            print(("Reading %s"%fileName))
 
         #read in the sensitivity file
         f = open(fileName, 'r')
         lines = f.readlines()
         f.close()
-        
+
         if self.mesh == None:
             dtype ='d'
         else:
             dtype = self.mesh.dtype
-        
+
         dJdInlet = np.zeros([3],dtype)
 
         nCounter=0
@@ -2968,35 +2970,35 @@ class PYDAFOAM(AeroSolver):
 
         Parameters
         ----------
-        
+
         obj : str
             the name of the objective for which the sensitivity is
             required.
         '''
         # get file name
         outputDir = self.getOption('outputdirectory')
-        
+
         if self.getOption('multipointopt'):
             filePrefix = 'FC%d_'%self.multiPointFCIndex
         else:
             filePrefix = ''
 
         objFile = 'objFuncsSens_d%sdVis_%s%3.3d.dat'%(self.possibleObjectives[obj],filePrefix,self.adjointRunsCounter-1)
-        fileName = os.path.join(outputDir,objFile) 
-        
+        fileName = os.path.join(outputDir,objFile)
+
         if self.comm.rank == 0:
-            print(("Reading %s"%fileName))   
+            print(("Reading %s"%fileName))
 
         #read in the sensitivity file
         f = open(fileName, 'r')
         lines = f.readlines()
         f.close()
-        
+
         if self.mesh == None:
             dtype ='d'
         else:
             dtype = self.mesh.dtype
-        
+
         dJdVis = np.zeros([1],dtype)
 
         lineCounter=0
@@ -3012,7 +3014,7 @@ class PYDAFOAM(AeroSolver):
         return dJdVis
 
     def getSurfaceCoordinates(self, groupName=None):
-        """Return the coordinates for the surfaces defined by groupName. 
+        """Return the coordinates for the surfaces defined by groupName.
 
         Parameters
         ----------
@@ -3022,7 +3024,7 @@ class PYDAFOAM(AeroSolver):
             user-supplied group of families. The default is None which
             corresponds to all wall-type surfaces.
         """
-        
+
         if groupName is None:
             groupName = self.allWallsGroup
 
@@ -3045,17 +3047,17 @@ class PYDAFOAM(AeroSolver):
     def getSurfaceConnectivity(self, groupName=None):
         """Return the connectivity of the coordinates at which the forces (or tractions) are
         defined. This is the complement of getForces() which returns
-        the forces at the locations returned in this routine. 
+        the forces at the locations returned in this routine.
 
         Parameters
         ----------
         groupName : str
             Group identifier to get only forces cooresponding to the
-            desired group. The group must be a family or a user-supplied 
-            group of families. The default is None which corresponds to 
+            desired group. The group must be a family or a user-supplied
+            group of families. The default is None which corresponds to
             all wall-type surfaces.
         """
-        
+
         if groupName is None:
             groupName = self.allWallsGroup
 
@@ -3071,7 +3073,7 @@ class PYDAFOAM(AeroSolver):
 
             # get the size of this
             bc = self.boundaries[name]
-            nPts = len(bc['indicesRed'])            
+            nPts = len(bc['indicesRed'])
 
             # get the number of reduced faces associated with this boundary
             nFace = len(bc['facesRed'])
@@ -3085,7 +3087,7 @@ class PYDAFOAM(AeroSolver):
                         face[i] +=pointOffset
                     conn.extend(face)
                     faceSizes.append(len(face))
-                    
+
                 pointOffset+=nPts
 
         return conn,faceSizes
@@ -3094,17 +3096,17 @@ class PYDAFOAM(AeroSolver):
 
         pass
 
- 
+
     def _getSolution(self):
         '''
-        Get all of the solution values that are available in 
+        Get all of the solution values that are available in
         objFuncs.dat or objFuncsMean.dat
         '''
         sol = {}
-        sol.update(self._readObjectiveFunctions()) 
-        
+        sol.update(self._readObjectiveFunctions())
+
         return sol
-        
+
 
 # --------------------------
 # Private Utility functions
@@ -3121,7 +3123,7 @@ class PYDAFOAM(AeroSolver):
 
         # loop over the basic surfaces in the family group and sum up the number of
         # faces and nodes
-        
+
         famInd = self.families[groupName]
         nPts = 0
         nCells = 0
@@ -3132,7 +3134,7 @@ class PYDAFOAM(AeroSolver):
             nPts += len(bc['indicesRed'])
 
         return nPts, nCells
-        
+
     def mapVector(self, vec1, groupName1, groupName2, vec2=None):
         """This is the main workhorse routine of everything that deals with
         families in pyDAFoam. The purpose of this routine is to convert a
@@ -3149,11 +3151,11 @@ class PYDAFOAM(AeroSolver):
         significant values.
 
         The call: mapVector(vec1, 'f12', 'f23')
-        
+
         will produce the "returned vec" array, containing the
         significant values from 'fam2', where the two groups overlap,
         and the new values from 'fam3' set to zero. The values from
-        fam1 are lost. The returned vec has size 15. 
+        fam1 are lost. The returned vec has size 15.
 
             fam1     fam2      fam3
         |---------+----------+------|
@@ -3174,8 +3176,8 @@ class PYDAFOAM(AeroSolver):
             The family group where we want to the vector to mapped into
 
         vec2 : Numpy array or None
-            Array containing existing values in the output vector we want to keep. 
-            If this vector is not given, the values will be filled with zeros. 
+            Array containing existing values in the output vector we want to keep.
+            If this vector is not given, the values will be filled with zeros.
 
         Returns
         -------
@@ -3185,7 +3187,7 @@ class PYDAFOAM(AeroSolver):
         if groupName1 not in self.families or groupName2 not in self.families:
             raise Error("'%s' or '%s' is not a family in the CGNS file or has not been added"
                         " as a combination of families"%(groupName1, groupName2))
-       
+
         # Shortcut:
         if groupName1 == groupName2:
             return vec1
@@ -3193,12 +3195,12 @@ class PYDAFOAM(AeroSolver):
         if vec2 is None:
             npts, ncell = self._getSurfaceSize(groupName2)
             vec2 = np.zeros((npts, 3), self.dtype)
-            
+
         famList1 = self.families[groupName1]
         famList2 = self.families[groupName2]
 
         '''
-        This functionality is predicated on the surfaces being traversed in the 
+        This functionality is predicated on the surfaces being traversed in the
         same order every time. Loop over the allfamilies list, keeping track of sizes
         as we go and if the family is in both famLists, copy the values from vec1 to vec2.
 
@@ -3211,10 +3213,10 @@ class PYDAFOAM(AeroSolver):
             npts, ncell = self._getSurfaceSize(self.basicFamilies[ind])
 
             if  ind in famList1 and ind in famList2:
-                vec2[vec2counter:npts+vec2counter] =  vec1[vec1counter:npts+vec1counter] 
+                vec2[vec2counter:npts+vec2counter] =  vec1[vec1counter:npts+vec1counter]
 
             if ind in famList1:
-                vec1counter+=npts                
+                vec1counter+=npts
 
             if ind in famList2:
                 vec2counter+=npts
@@ -3268,13 +3270,13 @@ class PYDAFOAM(AeroSolver):
             except:
                 raise Error('pyDAFoam: Unable to copy %s to %s.'%(pointsOrig,pointsCopy))
                 sys.exit(0)
-        
-        # wait for rank 0 
+
+        # wait for rank 0
         self.comm.Barrier()
 
         if self.comm.rank == 0:
             print("Reading points")
-        
+
         from pyofm import PYOFM
 
         # Initialize pyOFM
@@ -3306,7 +3308,7 @@ class PYDAFOAM(AeroSolver):
         '''
         # get the list of basic families
         self.basicFamilies = sorted(self.boundaries.keys())
-        
+
         # save and return a list of the wall boundaries
         self.wallList = []
         counter = 0
@@ -3315,7 +3317,7 @@ class PYDAFOAM(AeroSolver):
             # setup the basic families dictionary
             self.families[name]=[counter]
             counter+=1
-            
+
             # Create a handle for this boundary
             bc = self.boundaries[name]
 
@@ -3331,10 +3333,10 @@ class PYDAFOAM(AeroSolver):
                     # get the node information for the current face
                     face = self.faces[iFace]
                     indices.extend(face)
-            
-            # Get the unique entries 
+
+            # Get the unique entries
             indices = np.unique(indices)
-            
+
             # now create the reverse dictionary to connect the reduced set with the original
             inverseInd = {}
             for i in range(len(indices)):
@@ -3353,7 +3355,7 @@ class PYDAFOAM(AeroSolver):
                     indRed = inverseInd[indOrig]
                     faceReduced.append(indRed)
                 facesRed.append(faceReduced)
-                
+
             #Check that the length of faces and facesRed are equal
             if not (len(bc['faces'])==len(facesRed)):
                 raise Error("Connectivity for faces on reduced index set is not the same length as original.")
@@ -3365,9 +3367,9 @@ class PYDAFOAM(AeroSolver):
             # now check for walls
             if bc['type']=='wall' or bc['type']=='slip' or bc['type']=='cyclic':
                 self.wallList.append(name)
-                    
+
         return
-   
+
 
 # ---------------------------------------------------------------
 # Additional files defined for the adjoint solver and optimization
@@ -3377,24 +3379,24 @@ class PYDAFOAM(AeroSolver):
         '''
         read in the costFunctions from objFuncs.dat or objFuncsMean.dat
         '''
-        
+
         outputDir = self.getOption('outputdirectory')
-        
+
         if self.getOption('multipointopt'):
             filePrefix = 'FC%d_'%self.multiPointFCIndex
         else:
             filePrefix = ''
-            
+
         if self.getOption('avgobjfuncs'):
             costFuncsFileName = os.path.join(outputDir,"objFuncsMean_%s%3.3d.dat"%(filePrefix,self.flowRunsCounter-1)) # note we need to read self.flowRunsCounter-1
         else:
             costFuncsFileName = os.path.join(outputDir,"objFuncs_%s%3.3d.dat"%(filePrefix,self.flowRunsCounter-1)) # note we need to read self.flowRunsCounter-1
-        
+
         if self.comm.rank == 0:
             print(("Reading %s"%costFuncsFileName))
-            
+
         f = open(costFuncsFileName,'r')
-        
+
         tmpSol = {}
         sol = {}
 
@@ -3416,16 +3418,16 @@ class PYDAFOAM(AeroSolver):
         for key in tmpSol.keys():
             sol[key]=tmpSol[key]
         # end
-        
+
         f.close()
-        
+
         return sol
 
 # Solution cleaning
 
     def _cleanPostprocessingDir(self):
         '''
-        Delete the files in the postprocessing directory from the previous 
+        Delete the files in the postprocessing directory from the previous
         iteration.
         '''
         postProcessingDir = os.path.join(os.getcwd(),self.getOption('postprocessingdir'))
@@ -3442,19 +3444,19 @@ class PYDAFOAM(AeroSolver):
                 # end
             # end
         # end
-        
+
         self.comm.Barrier()
 
-        return 
+        return
 
     def _cleanSolution(self):
         '''
         Delete the files from the previous solution.
         '''
-        
+
         if self.comm.rank==0:
-            print("Deleting Previous Solution Files") 
-         
+            print("Deleting Previous Solution Files")
+
         solutionDir = os.getcwd()
         if self.parallel:
             # loop over the number of proccessors, deleating each solution directory along the
@@ -3464,9 +3466,9 @@ class PYDAFOAM(AeroSolver):
                 self._deleteDir(solutionDirPar)
         else:
             self._deleteDir(solutionDir)
- 
-        return 
-        
+
+        return
+
     def _deleteDir(self,solutionDir):
         '''
         delete a single directory only on the root process
@@ -3478,29 +3480,29 @@ class PYDAFOAM(AeroSolver):
                     # Create a regular expression for all of the non-zero numeric directories
                     dirNum = re.compile(r'([1-9]+)([0-9]*)')
                     dirNum1 = re.compile(r'^\d+\.\d+$') # for folder such as 0.01
- 
+
                     # If this is one of those directories, delete it
                     res = dirNum.match(f)
                     res1 = dirNum1.match(f)
                     #print res
                     if res or res1:
-                        
+
                         delSolutionDir=solutionDir+'/%s'%f
                         try:
                             shutil.rmtree(delSolutionDir)
                         except:
                             raise Error('pyDAFoam: Unable to remove solution directory: %s'%f)
                             sys.exit(0)
-                            
+
                         # end
                     # end
                 # end
             # end
-            
+
         # Wait for all of the processors to get here
         self.comm.Barrier()
-        
-        return 
+
+        return
 
     def _copyResults(self,origDir,newDir):
         """
@@ -3515,14 +3517,14 @@ class PYDAFOAM(AeroSolver):
                 except:
                     print(('pyDAFoam: Unable to remove existing directory %s.'%newDir))
             # end
-            
+
             print(("Copying solutions %s to %s"%(origDir,newDir)))
             IGNORE_PATTERNS = ('*.bin','*.info','*.swp','*.clr')
             try:
                 shutil.copytree(origDir,newDir,ignore=shutil.ignore_patterns(*IGNORE_PATTERNS))
             except:
                 print(('pyDAFoam: Unable to copy directory to %s.'%newDir))
-            # end 
+            # end
 
             if self.getOption('writecompress')=='on':
                 pointNameOrig='points_orig.gz'
@@ -3546,7 +3548,7 @@ class PYDAFOAM(AeroSolver):
             #repeat for parallel directories
             if self.parallel:
                 for i in range(self.comm.size):
-                    # this is a parallel case remove points file from processor dirs 
+                    # this is a parallel case remove points file from processor dirs
                     pointsFileName = 'processor%d/constant/polyMesh/%s'%(i,pointNameOrig)
                     pointsFile = os.path.join(newDir,pointsFileName)
                     if os.path.exists(pointsFile):
@@ -3554,25 +3556,25 @@ class PYDAFOAM(AeroSolver):
                             os.remove(pointsFile)
                         except:
                             print(('pyDAFoam: Unable to remove file %s.'%pointsFile))
-            
+
         # end
         self.comm.Barrier()
-        
+
         return
-    
+
     def _checkRestartLogs(self,logOpt):
         """
         Check if the logs and data exist for restart runs, if not, set self.skipFlowAndAdjointRuns == False
         """
-        
+
         if self.getOption('multipointopt') and self.multiPointFCIndex==None:
             raise Error('multipointopt is true while multiPointFCIndex is not set')
-        
+
         if not self.skipFlowAndAdjointRuns:
             return
-        
+
         outputDir = self.getOption('outputdirectory')
-        
+
         if logOpt == 1:
             # check flowLog
             if not self.getOption('multipointopt'):
@@ -3583,30 +3585,30 @@ class PYDAFOAM(AeroSolver):
             if not os.path.isfile(fileName):
                 self.skipFlowAndAdjointRuns = False
                 return
-                
-            # check objFuncs.dat 
+
+            # check objFuncs.dat
             if not self.getOption('multipointopt'):
                 fileName = os.path.join(outputDir,'objFuncs_%3.3d.dat'%self.flowRunsCounter)
             else:
                 fileName = os.path.join(outputDir,'objFuncs_FC%d_%3.3d.dat'%(self.multiPointFCIndex,self.flowRunsCounter))
-                
+
             if not os.path.isfile(fileName):
                 self.skipFlowAndAdjointRuns = False
                 return
-            
-            # check objFuncsMean.dat 
+
+            # check objFuncsMean.dat
             if self.getOption('avgobjfuncs'):
                 if not self.getOption('multipointopt'):
                     fileName = os.path.join(outputDir,'objFuncsMean_%3.3d.dat'%self.flowRunsCounter)
                 else:
                     fileName = os.path.join(outputDir,'objFuncsMean_FC%d_%3.3d.dat'%(self.multiPointFCIndex,self.flowRunsCounter))
-                    
+
                 if not os.path.isfile(fileName):
                     self.skipFlowAndAdjointRuns = False
                     return
-                    
+
         elif logOpt == 2:
-            # check adjointLog 
+            # check adjointLog
             if not self.getOption('multipointopt'):
                 fileName = os.path.join(outputDir,'adjointLog_%3.3d'%self.adjointRunsCounter)
             else:
@@ -3616,7 +3618,7 @@ class PYDAFOAM(AeroSolver):
                 self.skipFlowAndAdjointRuns = False
                 return
 
-            # check designVariables.dat 
+            # check designVariables.dat
             if not self.getOption('multipointopt'):
                 fileName = os.path.join(outputDir,'designVariables_%3.3d.dat'%self.adjointRunsCounter)
             else:
@@ -3625,9 +3627,9 @@ class PYDAFOAM(AeroSolver):
             if not os.path.isfile(fileName):
                 self.skipFlowAndAdjointRuns = False
                 return
-           
+
             # check sensitivities
-            if not self.getOption('multipointopt'):        
+            if not self.getOption('multipointopt'):
                 workingDir= os.getcwd()
             else:
                 workingDir= os.path.join(os.getcwd(),'../FlowConfig%d'%(self.multiPointFCIndex))
@@ -3642,11 +3644,11 @@ class PYDAFOAM(AeroSolver):
                         fileName=os.path.join(outputDir,sensFileName+'_%3.3d'%self.adjointRunsCounter+sensFileExt)
                     else:
                         fileName=os.path.join(outputDir,sensFileName+'_FC%d_%3.3d'%(self.multiPointFCIndex,self.adjointRunsCounter)+sensFileExt)
-                        
+
                     if not os.path.isfile(fileName):
                         self.skipFlowAndAdjointRuns = False
                         return
-                    
+
         elif logOpt == 3:
             # check checkMeshLog
             if not self.getOption('multipointopt'):
@@ -3657,12 +3659,12 @@ class PYDAFOAM(AeroSolver):
             if not os.path.isfile(fileName):
                 self.skipFlowAndAdjointRuns = False
                 return
- 
+
         else:
             raise Error('logOpt not valid')
-        
-        return         
-   
+
+        return
+
 
     def _writeDVs(self):
         '''
@@ -3682,30 +3684,30 @@ class PYDAFOAM(AeroSolver):
                     f.write('\n')
                 f.close()
             self.comm.Barrier()
-             
-      
+
+
     def _copyLogs(self,logOpt):
         """
-        Number the flowLog, adjointLog, checkMeshLog, objFuncs.dat, objFuncsMean.dat, objFuncsSens.dat and 
+        Number the flowLog, adjointLog, checkMeshLog, objFuncs.dat, objFuncsMean.dat, objFuncsSens.dat and
         copy them to the outputdirectory. The evalFunctions and evalFunctionsSens functions will then read the
-        objective functions and their sensitvities from the outputdirectory. If restartopt=true, The evalFunctions 
+        objective functions and their sensitvities from the outputdirectory. If restartopt=true, The evalFunctions
         and evalFunctionsSens functions will directly read information from the outputdirectory without running
         any flow or adjoint until the optimization reach the restart point. This will reproduce exact optimization
         process.
-        
+
         NOTE: for checkMeshLog, we always copy from the current directory
-        
+
         Parameters
         ----------
         logOpt : int
             1: flow; 2: adjoint; 3: checkMesh
         """
-        
+
         if self.getOption('multipointopt') and self.multiPointFCIndex==None:
             raise Error('multipointopt is true while multiPointFCIndex is not set')
-        
+
         outputDir = self.getOption('outputdirectory')
-        
+
         if logOpt == 1:
             # copy flowLog to the outputdirectory
             if not self.getOption('multipointopt'):
@@ -3714,24 +3716,24 @@ class PYDAFOAM(AeroSolver):
             else:
                 fileOrig = '../FlowConfig%d/flowLog'%(self.multiPointFCIndex)
                 fileCopy = os.path.join(outputDir,'flowLog_FC%d_%3.3d'%(self.multiPointFCIndex,self.flowRunsCounter))
-                
+
             if self.comm.rank == 0:
                 print(("Copying %s to %s"%(fileOrig,fileCopy)))
                 shutil.copyfile(fileOrig,fileCopy)
-                
-            # copy objFuncs.dat to the outputdirectory    
+
+            # copy objFuncs.dat to the outputdirectory
             if not self.getOption('multipointopt'):
                 fileOrig = 'objFuncs.dat'
                 fileCopy = os.path.join(outputDir,'objFuncs_%3.3d.dat'%self.flowRunsCounter)
             else:
                 fileOrig = '../FlowConfig%d/objFuncs.dat'%(self.multiPointFCIndex)
                 fileCopy = os.path.join(outputDir,'objFuncs_FC%d_%3.3d.dat'%(self.multiPointFCIndex,self.flowRunsCounter))
-                
+
             if self.comm.rank == 0:
                 print(("Copying %s to %s"%(fileOrig,fileCopy)))
                 shutil.copyfile(fileOrig,fileCopy)
-            
-            # copy objFuncsMean.dat to the outputdirectory    
+
+            # copy objFuncsMean.dat to the outputdirectory
             if self.getOption('avgobjfuncs'):
                 if not self.getOption('multipointopt'):
                     fileOrig = 'objFuncsMean.dat'
@@ -3739,11 +3741,11 @@ class PYDAFOAM(AeroSolver):
                 else:
                     fileOrig = '../FlowConfig%d/objFuncsMean.dat'%(self.multiPointFCIndex)
                     fileCopy = os.path.join(outputDir,'objFuncsMean_FC%d_%3.3d.dat'%(self.multiPointFCIndex,self.flowRunsCounter))
-                    
+
                 if self.comm.rank == 0:
                     print(("Copying %s to %s"%(fileOrig,fileCopy)))
                     shutil.copyfile(fileOrig,fileCopy)
-                        
+
         elif logOpt == 2:
             # copy adjointLog to the outputdirectory
             if not self.getOption('multipointopt'):
@@ -3771,9 +3773,9 @@ class PYDAFOAM(AeroSolver):
                     shutil.copyfile(fileOrig,fileCopy)
                 except:
                     print(("Cannot copy %s to %s!!!"%(fileOrig,fileCopy)))
-           
+
             # copy sensitivities
-            if not self.getOption('multipointopt'):        
+            if not self.getOption('multipointopt'):
                 workingDir= os.getcwd()
             else:
                 workingDir= os.path.join(os.getcwd(),'../FlowConfig%d'%(self.multiPointFCIndex))
@@ -3790,11 +3792,11 @@ class PYDAFOAM(AeroSolver):
                     else:
                         fileOrig = os.path.join('../FlowConfig%d'%self.multiPointFCIndex,file1)
                         fileCopy=os.path.join(outputDir,sensFileName+'_FC%d_%3.3d'%(self.multiPointFCIndex,self.adjointRunsCounter)+sensFileExt)
-                        
+
                     if self.comm.rank == 0:
                         print(("Copying %s to %s"%(fileOrig,fileCopy)))
                         shutil.copyfile(fileOrig,fileCopy)
-                    
+
         elif logOpt == 3:
             # copy checkMeshLog to outputdirectory
             if not self.getOption('multipointopt'):
@@ -3807,14 +3809,14 @@ class PYDAFOAM(AeroSolver):
             if self.comm.rank == 0:
                 print(("Copying %s to %s"%(fileOrig,fileCopy)))
                 shutil.copyfile(fileOrig,fileCopy)
- 
+
         else:
             raise Error('logOpt not valid')
-               
-        self.comm.Barrier()   
-        
+
+        self.comm.Barrier()
+
         return
-        
+
 
 # parallel run scripts
 
@@ -3822,7 +3824,7 @@ class PYDAFOAM(AeroSolver):
 
         if self.comm.rank==0:
             f = open(scriptName,'w')
-            
+
             f.write('#!/bin/bash \n')
 
             f.write('echo "Running Flow Solver..."\n')
@@ -3831,7 +3833,7 @@ class PYDAFOAM(AeroSolver):
             f.write('echo "Finished, writing end file"\n')
             f.write('touch foamFinished.txt\n')
             f.write('# End of the script file\n')
-            
+
             f.close()
 
         self.comm.Barrier()
@@ -3842,15 +3844,15 @@ class PYDAFOAM(AeroSolver):
 
         if self.comm.rank==0:
             f = open(scriptName,'w')
-            
+
             f.write('#!/bin/bash \n')
-            
+
             f.write('echo "Running Coloring Solver..."\n')
             f.write('coloringSolver%s -parallel > %s\n'%(self.getOption('flowcondition'),logFileName))
             f.write('echo "Coloring finished"\n')
             f.write('touch coloringFinished.txt\n')
             f.write('# End of the script file\n')
-            
+
             f.close()
         return
 
@@ -3858,50 +3860,50 @@ class PYDAFOAM(AeroSolver):
 
         if self.comm.rank==0:
             f = open(scriptName,'w')
-            
+
             f.write('#!/bin/bash \n')
             f.write('potentialFoam -parallel > %s\n'%logFileName)
             f.write('touch potentialFoamFinished.txt\n')
             f.write('# End of the script file\n')
-            
+
             f.close()
-            
+
         self.comm.Barrier()
-        
+
         return
-        
+
     def writeParallelCheckMeshScript(self,logFileName,scriptName):
 
         if self.comm.rank==0:
             f = open(scriptName,'w')
-            
+
             f.write('#!/bin/bash \n')
             f.write('checkMesh -parallel > %s\n'%logFileName)
             f.write('touch checkMeshFinished.txt\n')
             f.write('# End of the script file\n')
-            
+
             f.close()
-            
+
         self.comm.Barrier()
-        
+
         return
-        
-                
+
+
     def writeSurfaceSensitivityMap(self,evalFuncs=None,groupName='all',fileType='openfoam'):
         """
         Write the surface sensitivities.
         It will read the sensitivity, e.g., objFuncsSens_dCDdXv.bin from the current directory.
         So make sure you have solve the adjoint and the objFuncsSens_dCDdXv.bin file is up-to-date.
- 
+
         Parameters
         ----------
-        
+
         evalFuncs : iterable object containing strings
             The functions the user wants the derivatives of
- 
+
         groupName : str
             The group the user wants the derivatives of
-            
+
         fileType: str
             The format for the sensitivyt map, options are: tecplot or openfoam
 
@@ -3912,23 +3914,23 @@ class PYDAFOAM(AeroSolver):
 
         if self.comm.rank==0:
             print("Writing Surface Sensitivity Map.")
-        
-        if self.mesh is None:      
+
+        if self.mesh is None:
             raise Error('Cannot write the sensitivity map without a mesh object')
-            
+
         # Check for evalFuncs, this should eventually have some kind of default
         if evalFuncs is None:
             print('evalFuncs not set, exiting...')
             sys.exit(0)
 
         if 'Xv' not in self.getOption('adjdvtypes'):
-            raise Error('Xv not in adjDVType!') 
-            
+            raise Error('Xv not in adjDVType!')
+
         # generate the folders to save the sensitivty files for openfoam output format
         if fileType == 'openfoam':
             if self.comm.size == 1:
                 meshDir = '99999/polyMesh/'
-                sensDir = '99999/'          
+                sensDir = '99999/'
                 if not os.path.exists(meshDir):
                     os.makedirs(meshDir)
             else:
@@ -3938,62 +3940,62 @@ class PYDAFOAM(AeroSolver):
                     for i in range(self.comm.size):
                         dir1 = 'processor%d/99999/polyMesh/'%i
                         if not os.path.exists(dir1):
-                            os.makedirs(dir1)  
+                            os.makedirs(dir1)
                 self.comm.Barrier()
-        
-        # warp the mesh   
+
+        # warp the mesh
         if self.DVGeo is not None:
             self.mesh.warpMesh()
-            
+
         funcsSens ={}
- 
+
         # Do the functions one at a time:
         for func in evalFuncs:
-            
+
             if self.comm.rank == 0:
                 print(('Reading adjoint: %s'%func))
- 
+
             key ='%s'% func
- 
+
             # Set dict structure for this derivative
             funcsSens[key] = {}
-             
+
             ptSetName=self.getPointSetName('dummy')
-               
+
             # Geometric derivatives
             dIdXv = self._readXvSensitivity(func,readCurrent=True)
- 
+
             # Now get total derivative wrt surface cordinates
             self.mesh.warpDeriv(dIdXv[:])
             # warp dIdx on surface and map it to groupName
             dIdx1 = self.mesh.getdXs()
-            dIdx1 = self.mapVector(dIdx1, self.meshFamilyGroup,groupName) 
+            dIdx1 = self.mapVector(dIdx1, self.meshFamilyGroup,groupName)
             dIdx = {ptSetName:dIdx1}
-                
+
             # add to dict
             funcsSens[key].update(dIdx)
-            
+
             # Obtain the points and connectivity for the specified groupName
             pts = self.getSurfaceCoordinates(groupName)
             conn, faceSizes = self.getSurfaceConnectivity(groupName)
             conn = np.array(conn).flatten()
-            
+
             if fileType == 'tecplot':
                 # Now triangulate the surface
-              
+
                 # Triangle info...point and two vectors
                 p0 = []
                 v1 = []
                 v2 = []
                 sens=[]
-                
+
                 # loop over the faces
                 connCounter=0
                 for iFace in range(len(faceSizes)):
                     # Get the number of nodes on this face
                     faceSize = faceSizes[iFace]
                     faceNodes = conn[connCounter:connCounter+faceSize]
-                    
+
                     # Start by getting the centerpoint and the sens at the centerpoint
                     ptSum= [0, 0, 0]
                     sensSum=[0, 0, 0]
@@ -4002,7 +4004,7 @@ class PYDAFOAM(AeroSolver):
                         ptSum+=pts[idx]
                         # just get the sum of dIdx at the centerpoint
                         sensSum+=dIdx[ptSetName][idx]
-        
+
                     avgPt = ptSum/faceSize
                     avgSens = sensSum/faceSize
                     # Now go around the face and add a triangle for each adjacent pair
@@ -4018,7 +4020,7 @@ class PYDAFOAM(AeroSolver):
                             # calculate the cell centered sensitivity for each triangulated face
                             sensSumTriSurf=avgSens+dIdx[ptSetName][idx]+dIdx[ptSetName][idxp1]
                             sens.append(sensSumTriSurf/3.0)
-                            
+
                         else:
                             # wrap back to the first point for the last element
                             idx0 = faceNodes[0]
@@ -4026,17 +4028,17 @@ class PYDAFOAM(AeroSolver):
                             # calculate the cell centered sensitivity for each triangulated face
                             sensSumTriSurf=avgSens+dIdx[ptSetName][idx]+dIdx[ptSetName][idx0]
                             sens.append(sensSumTriSurf/3.0)
-                            
+
                     # Now increment the connectivity
                     connCounter+=faceSize
-                
+
                 # calculate the face normal unit vector
                 triSurfUnitNormal=np.zeros(shape=(len(v1),3))
                 for indx in range(len(v1)):
                     triSurfUnitNormal[indx]=np.cross(v2[indx],v1[indx]) # v2 X v1 is the outward dir
                     magNorm=np.linalg.norm(triSurfUnitNormal[indx])
                     triSurfUnitNormal[indx]=triSurfUnitNormal[indx]/magNorm
-                
+
                 # write the surface sensivitity to tecplot
                 fout = open('sensMap_%s.dat'%func, 'w')
                 fout.write("TITLE = Sensitivity Map for %s \n"%func)
@@ -4055,10 +4057,10 @@ class PYDAFOAM(AeroSolver):
                 for i in range(len(p0)):
                     fout.write('%d %d %d\n'% (3*i+1, 3*i+2,3*i+3))
                 fout.close()
-                
-                
+
+
             elif fileType == 'openfoam':
-     
+
                 ############### write points
                 fPoints = open(os.path.join(meshDir,'points'),'w')
                 # write the file header
@@ -4079,14 +4081,14 @@ class PYDAFOAM(AeroSolver):
                 fPoints.write('}\n')
                 fPoints.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
                 fPoints.write('\n')
-                
+
                 fPoints.write('%d\n'%len(pts))
                 fPoints.write('(\n')
                 for i in range(len(pts)):
                     fPoints.write('(%f %f %f)\n'%(float(pts[i][0]),float(pts[i][1]),float(pts[i][2])))
                 fPoints.write(')\n')
                 fPoints.close()
-                
+
                 ################ write faces
                 fFaces = open(os.path.join(meshDir,'faces'),'w')
                 # write the file header
@@ -4107,7 +4109,7 @@ class PYDAFOAM(AeroSolver):
                 fFaces.write('}\n')
                 fFaces.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
                 fFaces.write('\n')
-                
+
                 counterI = 0
                 fFaces.write('%d\n'%len(faceSizes))
                 fFaces.write('(\n')
@@ -4119,7 +4121,7 @@ class PYDAFOAM(AeroSolver):
                     fFaces.write(')\n')
                 fFaces.write(')\n')
                 fFaces.close()
-                
+
                 ################ write owner
                 # note we don't actually need owner information for the surface mesh, so we simply assign zeros here
                 fOwner = open(os.path.join(meshDir,'owner'),'w')
@@ -4141,15 +4143,15 @@ class PYDAFOAM(AeroSolver):
                 fOwner.write('}\n')
                 fOwner.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
                 fOwner.write('\n')
-                
+
                 fOwner.write('%d\n'%len(faceSizes))
                 fOwner.write('(\n')
                 for i in range(len(faceSizes)):
                     fOwner.write('0\n')
-                fOwner.write(')\n')        
+                fOwner.write(')\n')
                 fOwner.close()
-                
-                
+
+
                 ################ write neighbour
                 # note we don't actually need neighbour information for the surface mesh, so we simply assign zeros here
                 fNeighbour = open(os.path.join(meshDir,'neighbour'),'w')
@@ -4171,15 +4173,15 @@ class PYDAFOAM(AeroSolver):
                 fNeighbour.write('}\n')
                 fNeighbour.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
                 fNeighbour.write('\n')
-            
+
                 fNeighbour.write('%d\n'%len(faceSizes))
                 fNeighbour.write('(\n')
                 for i in range(len(faceSizes)):
                     fNeighbour.write('0\n')
-                fNeighbour.write(')\n')       
+                fNeighbour.write(')\n')
                 fNeighbour.close()
-                
-                
+
+
                 ################ write boundary
                 fBoundary = open(os.path.join(meshDir,'boundary'),'w')
                 # write the file header
@@ -4200,7 +4202,7 @@ class PYDAFOAM(AeroSolver):
                 fBoundary.write('}\n')
                 fBoundary.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
                 fBoundary.write('\n')
-                
+
                 fBoundary.write('1\n')
                 fBoundary.write('(\n')
                 fBoundary.write('    %s\n'%groupName)
@@ -4210,10 +4212,10 @@ class PYDAFOAM(AeroSolver):
                 fBoundary.write('        startFace  0;\n')
                 fBoundary.write('    }\n')
                 fBoundary.write(')\n')
-                
+
                 fBoundary.close()
-                
-                
+
+
                 ################ write sensitivity
                 fSens = open(os.path.join(sensDir,'sensitivity4%s'%func),'w')
                 # write the file header
@@ -4234,10 +4236,10 @@ class PYDAFOAM(AeroSolver):
                 fSens.write('}\n')
                 fSens.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
                 fSens.write('\n')
-                
+
                 fSens.write('dimensions      [0 0 0 0 0 0 0];\n')
                 fSens.write('internalField   uniform (0 0 0);\n')
-                
+
                 counterI = 0
                 fSens.write('boundaryField\n')
                 fSens.write('{\n')
@@ -4261,50 +4263,50 @@ class PYDAFOAM(AeroSolver):
                     sensXMean /= faceSizes[i]
                     sensYMean /= faceSizes[i]
                     sensZMean /= faceSizes[i]
-                    fSens.write('(%f %f %f)\n'%(sensXMean,sensYMean,sensZMean))   
+                    fSens.write('(%f %f %f)\n'%(sensXMean,sensYMean,sensZMean))
                 fSens.write(')\n')
                 fSens.write(';\n')
                 fSens.write('    }\n')
                 fSens.write('}\n')
                 fSens.close()
-            
-            else:
-                raise Error('fileType not valid! Options are: tecplot or openfoam') 
 
-       
+            else:
+                raise Error('fileType not valid! Options are: tecplot or openfoam')
+
+
         return
-        
+
     def writeSurfaceSensitivityMapFFD(self,evalFuncs,groupName=None):
         """
         Write the surface sensitivities to a OpenFOAM file.
         Parameters
         ----------
-        
+
         evalFuncs : iterable object containing strings
             The functions the user wants the derivatives of
- 
+
         groupName : str
             The group the user wants the derivatives of
- 
+
         Examples
         --------
         >>> CFDsolver.writeSurfaceSensitivityMap( ['CD','CL'])
         """
-                
+
         if self.comm.rank==0:
             print("Writing Surface Sensitivity Map.")
-        
-        if self.mesh is None:      
+
+        if self.mesh is None:
             raise Error('Cannot write the sensitivity map without a mesh object')
-            
+
         # Check for evalFuncs, this should eventually have some kind of default
         if evalFuncs is None:
             print('evalFuncs not set, exiting...')
             sys.exit(0)
-            
+
         if groupName == None:
             groupName = self.designFamilyGroup
-        
+
         # setup ptSetName and add pointSet
         self.ptSetName = self.getPointSetName('dummy')
         ptSetName = self.ptSetName
@@ -4316,11 +4318,11 @@ class PYDAFOAM(AeroSolver):
 
         dIdXs0 = np.zeros_like(self.coords0,self.dtype)
         dIdXs0 = self.mapVector(dIdXs0,self.allFamilies,groupName)
-        
+
         # generate the folder to save the sensitivty files
         if self.comm.size == 1:
             meshDir = '99999/polyMesh/'
-            sensDir = '99999/'          
+            sensDir = '99999/'
             if not os.path.exists(meshDir):
                 os.makedirs(meshDir)
         else:
@@ -4330,29 +4332,29 @@ class PYDAFOAM(AeroSolver):
                 for i in range(self.comm.size):
                     dir1 = 'processor%d/99999/polyMesh/'%i
                     if not os.path.exists(dir1):
-                        os.makedirs(dir1)  
-            self.comm.Barrier()      
-             
+                        os.makedirs(dir1)
+            self.comm.Barrier()
+
         # Do the functions one at a time:
         for func in evalFuncs:
             if self.comm.rank == 0:
                 print(('Reading adjoint: %s'%func))
- 
+
             key ='%s'% func
-            
+
             # calc the surface sens dIdXs based on the dIdXFFD
             if self.getOption('computeffdderivs'):
                 dIdXFFD = self._readFFDSensitivity(func)
-                dIdXs = self.DVGeo.totalSensitivityProd(dIdXFFD,ptSetName=ptSetName,comm=self.comm).reshape(dIdXs0.shape) 
+                dIdXs = self.DVGeo.totalSensitivityProd(dIdXFFD,ptSetName=ptSetName,comm=self.comm).reshape(dIdXs0.shape)
             else:
-                raise Error('computeffdderivs not set') 
-                
+                raise Error('computeffdderivs not set')
+
             # Obtain the points and connectivity
             pts = self.getSurfaceCoordinates(groupName)
             conn, faceSizes = self.getSurfaceConnectivity(groupName)
             conn = np.array(conn).flatten()
             sens = np.zeros((len(faceSizes),3))
-                
+
             ############### write points
             fPoints = open(os.path.join(meshDir,'points'),'w')
             # write the file header
@@ -4373,14 +4375,14 @@ class PYDAFOAM(AeroSolver):
             fPoints.write('}\n')
             fPoints.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
             fPoints.write('\n')
-            
+
             fPoints.write('%d\n'%len(pts))
             fPoints.write('(\n')
             for i in range(len(pts)):
                 fPoints.write('(%f %f %f)\n'%(float(pts[i][0]),float(pts[i][1]),float(pts[i][2])))
             fPoints.write(')\n')
             fPoints.close()
-            
+
             ################ write faces
             fFaces = open(os.path.join(meshDir,'faces'),'w')
             # write the file header
@@ -4401,7 +4403,7 @@ class PYDAFOAM(AeroSolver):
             fFaces.write('}\n')
             fFaces.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
             fFaces.write('\n')
-            
+
             counterI = 0
             fFaces.write('%d\n'%len(faceSizes))
             fFaces.write('(\n')
@@ -4413,7 +4415,7 @@ class PYDAFOAM(AeroSolver):
                 fFaces.write(')\n')
             fFaces.write(')\n')
             fFaces.close()
-            
+
             ################ write owner
             # note we don't actually need owner information for the surface mesh, so we simply assign zeros here
             fOwner = open(os.path.join(meshDir,'owner'),'w')
@@ -4435,15 +4437,15 @@ class PYDAFOAM(AeroSolver):
             fOwner.write('}\n')
             fOwner.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
             fOwner.write('\n')
-            
+
             fOwner.write('%d\n'%len(faceSizes))
             fOwner.write('(\n')
             for i in range(len(faceSizes)):
                 fOwner.write('0\n')
-            fOwner.write(')\n')        
+            fOwner.write(')\n')
             fOwner.close()
-            
-            
+
+
             ################ write neighbour
             # note we don't actually need neighbour information for the surface mesh, so we simply assign zeros here
             fNeighbour = open(os.path.join(meshDir,'neighbour'),'w')
@@ -4465,15 +4467,15 @@ class PYDAFOAM(AeroSolver):
             fNeighbour.write('}\n')
             fNeighbour.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
             fNeighbour.write('\n')
-        
+
             fNeighbour.write('%d\n'%len(faceSizes))
             fNeighbour.write('(\n')
             for i in range(len(faceSizes)):
                 fNeighbour.write('0\n')
-            fNeighbour.write(')\n')       
+            fNeighbour.write(')\n')
             fNeighbour.close()
-            
-            
+
+
             ################ write boundary
             fBoundary = open(os.path.join(meshDir,'boundary'),'w')
             # write the file header
@@ -4494,7 +4496,7 @@ class PYDAFOAM(AeroSolver):
             fBoundary.write('}\n')
             fBoundary.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
             fBoundary.write('\n')
-            
+
             fBoundary.write('1\n')
             fBoundary.write('(\n')
             fBoundary.write('    %s\n'%groupName)
@@ -4504,10 +4506,10 @@ class PYDAFOAM(AeroSolver):
             fBoundary.write('        startFace  0;\n')
             fBoundary.write('    }\n')
             fBoundary.write(')\n')
-            
+
             fBoundary.close()
-            
-            
+
+
             ################ write sensitivity
             fSens = open(os.path.join(sensDir,'sensitivity4%s'%func),'w')
             # write the file header
@@ -4528,10 +4530,10 @@ class PYDAFOAM(AeroSolver):
             fSens.write('}\n')
             fSens.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
             fSens.write('\n')
-            
+
             fSens.write('dimensions      [0 0 0 0 0 0 0];\n')
             fSens.write('internalField   uniform (0 0 0);\n')
-            
+
             counterI = 0
             fSens.write('boundaryField\n')
             fSens.write('{\n')
@@ -4555,21 +4557,21 @@ class PYDAFOAM(AeroSolver):
                 sensXMean /= faceSizes[i]
                 sensYMean /= faceSizes[i]
                 sensZMean /= faceSizes[i]
-                fSens.write('(%f %f %f)\n'%(sensXMean,sensYMean,sensZMean))   
+                fSens.write('(%f %f %f)\n'%(sensXMean,sensYMean,sensZMean))
             fSens.write(')\n')
             fSens.write(';\n')
             fSens.write('    }\n')
             fSens.write('}\n')
             fSens.close()
-            
-            
+
+
         return
 
 # general routines for the foam file handling
 
     def _countCells(self):
         '''
-        loop over the owner and neighbour data and take the max and min 
+        loop over the owner and neighbour data and take the max and min
         cell value on each proc.
         Actually just taking 1 more than the max owner index. Should we check the max
         neighbour index as well?
@@ -4583,11 +4585,11 @@ class PYDAFOAM(AeroSolver):
         minIndNeighbour = self.neighbours.min()
         maxIndNeighbour = self.neighbours.max()
 
-        # if we only do maxIndOwner-minIndOwner, we will miss some cells since 
+        # if we only do maxIndOwner-minIndOwner, we will miss some cells since
         # one face can be owned by two different cells!
         # this is not a final solution.
         nCellsOwner = max( maxIndOwner, maxIndNeighbour) - min(minIndOwner,minIndNeighbour)
-       
+
         # if not nCellsOwner == nCellsNeighbour:
         #     raise Error("Owner and neighbour cell counts don't match."
         #                 "Owner: %d, Neighbour: %d"%(nCellsOwner,nCellsNeighbour))
@@ -4600,13 +4602,13 @@ class PYDAFOAM(AeroSolver):
     def _writeTurbulencePropertiesFile(self):
         '''
         Write out the turbulenceProperties.
-        
+
         This will overwrite whateverfile is present so that the solve is completed
         with the currently specified options.
         '''
         if self.comm.rank==0:
             # Open the options file for writing
-            workingDirectory = os.getcwd()        
+            workingDirectory = os.getcwd()
             constDir = 'constant'
             varDir = os.path.join(workingDirectory,constDir)
             fileName = 'turbulenceProperties'
@@ -4631,10 +4633,10 @@ class PYDAFOAM(AeroSolver):
             f.write('}\n')
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
             f.write('\n')
-            
+
             rasmodel = self.getOption('rasmodel')
             rasModelParameters=self.getOption('rasmodelparameters')
-                
+
             f.write('simulationType RAS;\n')
             f.write('RAS \n')
             f.write('{ \n')
@@ -4656,17 +4658,17 @@ class PYDAFOAM(AeroSolver):
 
             f.close()
         return
-        
+
     def _writeFvSchemesFile(self):
         '''
         Write out the fvSchemes file.
-        
+
         This will overwrite whateverfile is present so that the solve is completed
         with the currently specified options.
         '''
         if self.comm.rank==0:
             # Open the options file for writing
-            workingDirectory = os.getcwd()  
+            workingDirectory = os.getcwd()
             sysDir = 'system'
             varDir = os.path.join(workingDirectory,sysDir)
             fileName = 'fvSchemes'
@@ -4775,30 +4777,30 @@ class PYDAFOAM(AeroSolver):
             f.write('    %-50s  %s;\n'%('method',self.getOption('walldistmethod')))
             f.write('}\n')
             f.write('\n')
-            
+
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
 
             f.close()
         return
-   
+
     def _writeFvSolutionFile(self):
         '''
         Write out the fvSolution file.
-        
+
         This will overwrite whateverfile is present so that the solve is completed
         with the currently specified options.
         '''
         if self.comm.rank==0:
             # Open the options file for writing
-            workingDirectory = os.getcwd()  
+            workingDirectory = os.getcwd()
             sysDir = 'system'
             varDir = os.path.join(workingDirectory,sysDir)
             fileName = 'fvSolution'
             fileLoc = os.path.join(varDir, fileName)
             f = open(fileLoc, 'w')
-            
+
             residualctrl =  self.getOption('residualcontrol')
-            
+
             # write the file header
             f.write('/*--------------------------------*- C++ -*---------------------------------*\ \n')
             f.write('| ========                 |                                                 | \n')
@@ -4858,7 +4860,7 @@ class PYDAFOAM(AeroSolver):
                     f.write('        %-30s %s;\n'%(key,fvSolvers[solver][key]))
                 f.write('    }\n')
             f.write('}\n')
-            
+
             f.write('\n')
             relaxFactors = self.getOption('fvrelaxfactors')
             f.write('relaxationFactors\n')
@@ -4893,18 +4895,18 @@ class PYDAFOAM(AeroSolver):
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
 
             f.close()
-        return   
-        
+        return
+
     def _writeDecomposeParDictFile(self):
         '''
         Write out the decomposeParDict file.
-        
+
         This will overwrite whateverfile is present so that the solve is completed
         with the currently specified options.
         '''
         if self.comm.rank==0:
             # Open the options file for writing
-            workingDirectory = os.getcwd()  
+            workingDirectory = os.getcwd()
             sysDir = 'system'
             varDir = os.path.join(workingDirectory,sysDir)
             fileName = 'decomposeParDict'
@@ -4961,18 +4963,18 @@ class PYDAFOAM(AeroSolver):
 
             f.close()
         return
-        
-        
+
+
     def _writeTransportPropertiesFile(self):
         '''
         Write out the transportProperties file.
-        
+
         This will overwrite whateverfile is present so that the solve is completed
         with the currently specified options.
         '''
         if self.comm.rank==0:
             # Open the options file for writing
-            workingDirectory = os.getcwd()  
+            workingDirectory = os.getcwd()
             sysDir = 'constant'
             varDir = os.path.join(workingDirectory,sysDir)
             fileName = 'transportProperties'
@@ -5005,7 +5007,7 @@ class PYDAFOAM(AeroSolver):
                 if not isinstance(transP[key], (list,)):
                     f.write('%s %16.16f;\n'%(key,transP[key]))
             f.write('\n')
-            
+
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
 
             f.close()
@@ -5014,13 +5016,13 @@ class PYDAFOAM(AeroSolver):
     def _writeMRFPropertiesFile(self):
         '''
         Write out the MRFProperties file.
-        
+
         This will overwrite whateverfile is present so that the solve is completed
         with the currently specified options.
         '''
         if self.comm.rank==0:
             # Open the options file for writing
-            workingDirectory = os.getcwd()  
+            workingDirectory = os.getcwd()
             sysDir = 'constant'
             varDir = os.path.join(workingDirectory,sysDir)
             fileName = 'MRFProperties'
@@ -5061,7 +5063,7 @@ class PYDAFOAM(AeroSolver):
             f.write('    omega %f;\n'%mrfP['omega'])
             f.write('}\n')
             f.write('\n')
-            
+
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
 
             f.close()
@@ -5070,13 +5072,13 @@ class PYDAFOAM(AeroSolver):
     def _writeRadiationPropertiesFile(self):
         '''
         Write out the radiationProperties file.
-        
+
         This will overwrite whateverfile is present so that the solve is completed
         with the currently specified options.
         '''
         if self.comm.rank==0:
             # Open the options file for writing
-            workingDirectory = os.getcwd()  
+            workingDirectory = os.getcwd()
             sysDir = 'constant'
             varDir = os.path.join(workingDirectory,sysDir)
             fileName = 'radiationProperties'
@@ -5117,22 +5119,22 @@ class PYDAFOAM(AeroSolver):
             f.write('sootModel                                    none;\n')
             f.write('transmissivityModel                          none;\n')
             f.write('\n')
-            
+
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
 
             f.close()
         return
-    
+
     def _writeGFile(self):
         '''
         Write out the g file.
-        
+
         This will overwrite whateverfile is present so that the solve is completed
         with the currently specified options.
         '''
         if self.comm.rank==0:
             # Open the options file for writing
-            workingDirectory = os.getcwd()  
+            workingDirectory = os.getcwd()
             sysDir = 'constant'
             varDir = os.path.join(workingDirectory,sysDir)
             fileName = 'g'
@@ -5166,22 +5168,22 @@ class PYDAFOAM(AeroSolver):
             else:
                 f.write('value           (0 0 0);\n')
             f.write('\n')
-            
+
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
 
             f.close()
         return
-    
+
     def _writeThermophysicalPropertiesFile(self):
         '''
         Write out the thermophysicalProperties file.
-        
+
         This will overwrite whateverfile is present so that the solve is completed
         with the currently specified options.
         '''
         if self.comm.rank==0:
             # Open the options file for writing
-            workingDirectory = os.getcwd()  
+            workingDirectory = os.getcwd()
             sysDir = 'constant'
             varDir = os.path.join(workingDirectory,sysDir)
             fileName = 'thermophysicalProperties'
@@ -5227,9 +5229,9 @@ class PYDAFOAM(AeroSolver):
             f.write('    { \n')
             f.write('        Cp                  %f; \n'%thermoP['Cp'])
             f.write('        Hf                  %f; \n'%thermoP['Hf'])
-            f.write('    } \n')    
-            f.write('    transport \n')    
-            f.write('    { \n')    
+            f.write('    } \n')
+            f.write('    transport \n')
+            f.write('    { \n')
             f.write('        mu                  %f; \n'%thermoP['mu'])
             f.write('        Pr                  %f; \n'%thermoP['Pr'])
             f.write('        TRef                %f; \n'%thermoP['TRef'])
@@ -5237,22 +5239,22 @@ class PYDAFOAM(AeroSolver):
             f.write('} \n')
 
             f.write('\n')
-            
+
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
 
             f.close()
         return
-    
+
     def _writeThermalPropertiesFile(self):
         '''
         Write out the thermalProperties file.
-        
+
         This will overwrite whateverfile is present so that the solve is completed
         with the currently specified options.
         '''
         if self.comm.rank==0:
             # Open the options file for writing
-            workingDirectory = os.getcwd()  
+            workingDirectory = os.getcwd()
             sysDir = 'constant'
             varDir = os.path.join(workingDirectory,sysDir)
             fileName = 'thermalProperties'
@@ -5308,22 +5310,22 @@ class PYDAFOAM(AeroSolver):
             f.write('thermalStress   %s;\n'%thermalStress)
 
             f.write('\n')
-            
+
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
 
             f.close()
         return
-    
+
     def _writeMechanicalPropertiesFile(self):
         '''
         Write out the mechanicalProperties file.
-        
+
         This will overwrite whateverfile is present so that the solve is completed
         with the currently specified options.
         '''
         if self.comm.rank==0:
             # Open the options file for writing
-            workingDirectory = os.getcwd()  
+            workingDirectory = os.getcwd()
             sysDir = 'constant'
             varDir = os.path.join(workingDirectory,sysDir)
             fileName = 'mechanicalProperties'
@@ -5377,7 +5379,7 @@ class PYDAFOAM(AeroSolver):
             f.write('planeStress     false;\n')
 
             f.write('\n')
-            
+
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
 
             f.close()
@@ -5385,13 +5387,13 @@ class PYDAFOAM(AeroSolver):
     def _writeROMDictFile(self):
         '''
         Write out the romDict file.
-        
+
         This will overwrite whateverfile is present so that the solve is completed
         with the currently specified options.
         '''
         if self.comm.rank==0:
             # Open the options file for writing
-            workingDirectory = os.getcwd()  
+            workingDirectory = os.getcwd()
             sysDir = 'system'
             varDir = os.path.join(workingDirectory,sysDir)
             fileName = 'romDict'
@@ -5418,6 +5420,8 @@ class PYDAFOAM(AeroSolver):
             f.write('\n')
 
             f.write('nSamples        %d;\n'%self.getOption('nsamples'))
+            f.write('resSamples        %d;\n'%self.getOption('ressamples'))
+            f.write('nSampleSV        %d;\n'%self.getOption('nsamplesv'))
             f.write('deltaFFD        (')
             for delta in self.getOption('deltaffd'):
                 f.write('%f '%delta)
@@ -5438,7 +5442,7 @@ class PYDAFOAM(AeroSolver):
             f.write('romNKMaxIts     %d;\n'%self.getOption('romnkmaxits'))
             f.write('useLSPG         %d;\n'%self.getOption('uselspg'))
             f.write('romNKMFFDH      %e;\n'%self.getOption('romnkmffdh'))
-            
+
             f.write('\n')
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
 
@@ -5448,24 +5452,24 @@ class PYDAFOAM(AeroSolver):
     def _writeControlDictFile(self):
         '''
         Write out the controlDict file.
-        
+
         This will overwrite whateverfile is present so that the solve is completed
         with the currently specified options.
         '''
         if self.comm.rank==0:
-            
+
             dragdir = self.getOption('dragdir')
             liftdir = self.getOption('liftdir')
             cofr = self.getOption('cofr')
-        
+
             # Open the options file for writing
-            workingDirectory = os.getcwd()  
+            workingDirectory = os.getcwd()
             sysDir = 'system'
             varDir = os.path.join(workingDirectory,sysDir)
             fileName = 'controlDict'
             fileLoc = os.path.join(varDir, fileName)
             f = open(fileLoc, 'w')
-            
+
             # get force related objfuncgeoinfo
             objfuncs = self.getOption('objfuncs')
             forcepatches = []
@@ -5475,7 +5479,7 @@ class PYDAFOAM(AeroSolver):
                 if objfunc in ['CD','CL','CMX','CMY','CMZ']:
                     forcepatches = objfuncgeoinfo[i]
                     break
-            
+
             # write the file header
             f.write('/*--------------------------------*- C++ -*---------------------------------*\ \n')
             f.write('| ========                 |                                                 | \n')
@@ -5493,9 +5497,9 @@ class PYDAFOAM(AeroSolver):
             f.write('    object      %s;\n'%fileName)
             f.write('}\n')
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
-            f.write('\n') 
-            f.write('\n')     
-            f.write('libs\n') 
+            f.write('\n')
+            f.write('\n')
+            f.write('libs\n')
             f.write('(\n')
             #f.write('    "libbuoyantPressureFvPatchScalarField.so" \n')
             if self.getOption('flowcondition')=="Incompressible":
@@ -5505,7 +5509,7 @@ class PYDAFOAM(AeroSolver):
                 f.write('    "libDummyTurbulenceModelCompressible.so" \n')
                 f.write('    "libSpalartAllmarasFv3Compressible.so" \n')
             f.write(');\n')
-            f.write('\n')     
+            f.write('\n')
             f.write('application     %s;'%self.getOption('adjointsolver') )
             f.write('\n')
             f.write('startFrom       %s;'%self.solveFrom )
@@ -5563,7 +5567,7 @@ class PYDAFOAM(AeroSolver):
                 f.write('        UName               U;\n')
                 f.write('        rho                 rhoInf;\n')
                 f.write('        rhoInf              %f;\n'%self.getOption('referencevalues')['rhoRef'])
-                
+
                 f.write('        dragDir             (%12.10f %12.10f %12.10f);\n'%(dragdir[0],dragdir[1],dragdir[2]))
                 f.write('        liftDir             (%12.10f %12.10f %12.10f);\n'%(liftdir[0],liftdir[1],liftdir[2]))
                 f.write('        CofR                (%f %f %f);\n'%(cofr[0],cofr[1],cofr[2]))
@@ -5601,13 +5605,13 @@ class PYDAFOAM(AeroSolver):
     def _writeAdjointDictFile(self):
         '''
         Write out the adjointDict File.
-        
+
         This will overwrite whateverfile is present so that the solve is completed
         with the currently specified options.
         '''
         if self.comm.rank==0:
             # Open the options file for writing
-            workingDirectory = os.getcwd()        
+            workingDirectory = os.getcwd()
             sysDir = 'system'
             varDir = os.path.join(workingDirectory,sysDir)
             fileName = 'adjointDict'
@@ -5632,7 +5636,7 @@ class PYDAFOAM(AeroSolver):
             f.write('}\n')
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
             f.write('\n')
-            
+
             solveAdjoint = self._checkBoolean(self.solveAdjoint)
             #options
             setFlowBCs = self._checkBoolean(self.getOption('setflowbcs'))
@@ -5647,7 +5651,7 @@ class PYDAFOAM(AeroSolver):
             reduceResCon4JacMat = self._checkBoolean(self.getOption('reducerescon4jacmat'))
             delTurbProd4PCMat = self._checkBoolean(self.getOption('delturbprod4pcmat'))
             calcPCMat = self._checkBoolean(self.getOption('calcpcmat'))
-            
+
             # Flow options
             f.write('flowOptions\n')
             f.write('{\n')
@@ -5723,7 +5727,7 @@ class PYDAFOAM(AeroSolver):
             f.write('    nkMaxIters             %d;\n'%self.getOption('nkmaxiters'))
             f.write('    nkMaxFuncEvals         %d;\n'%self.getOption('nkmaxfuncevals'))
             f.write('    nkASMOverlap           %d;\n'%self.getOption('nkasmoverlap'))
-            f.write('    nkGlobalPCIters        %d;\n'%self.getOption('nkglobalpciters'))     
+            f.write('    nkGlobalPCIters        %d;\n'%self.getOption('nkglobalpciters'))
             f.write('    nkLocalPCIters         %d;\n'%self.getOption('nklocalpciters'))
             f.write('    nkPCFillLevel          %d;\n'%self.getOption('nkpcfilllevel'))
             f.write('    nkJacMatReOrdering     %s;\n'%self.getOption('nkjacmatreordering'))
@@ -5731,8 +5735,8 @@ class PYDAFOAM(AeroSolver):
             f.write('    nkGMRESRestart         %d;\n'%self.getOption('nkgmresrestart'))
             f.write('}\n')
             f.write('\n')
-            
-            #Adjoint options 
+
+            #Adjoint options
             f.write('adjointOptions\n')
             f.write('{\n')
             f.write('    solveAdjoint           %s;\n'%solveAdjoint)
@@ -5745,30 +5749,30 @@ class PYDAFOAM(AeroSolver):
             f.write('    calcPCMat              %s;\n'%calcPCMat)
             f.write('    fastPCMat              %s;\n'%self._checkBoolean(self.getOption('fastpcmat')))
             f.write('    delTurbProd4PCMat      %s;\n'%delTurbProd4PCMat)
-            f.write('    writeMatrices          %s;\n'%writeMatrices)   
-            f.write('    adjGMRESCalcEigen      %s;\n'%adjGMRESCalcEigen)                 
+            f.write('    writeMatrices          %s;\n'%writeMatrices)
+            f.write('    adjGMRESCalcEigen      %s;\n'%adjGMRESCalcEigen)
             f.write('    adjGMRESMaxIters       %d;\n'%self.getOption('adjgmresmaxiters'))
             f.write('    adjGMRESRestart        %d;\n'%self.getOption('adjgmresrestart'))
             f.write('    adjASMOverlap          %d;\n'%self.getOption('adjasmoverlap'))
             f.write('    adjJacMatOrdering      %s;\n'%self.getOption('adjjacmatordering'))
             f.write('    adjJacMatReOrdering    %s;\n'%self.getOption('adjjacmatreordering'))
-            f.write('    adjGlobalPCIters       %d;\n'%self.getOption('adjglobalpciters'))     
+            f.write('    adjGlobalPCIters       %d;\n'%self.getOption('adjglobalpciters'))
             f.write('    adjLocalPCIters        %d;\n'%self.getOption('adjlocalpciters'))
             f.write('    adjPCFillLevel         %d;\n'%self.getOption('adjpcfilllevel'))
             f.write('    adjGMRESRelTol         %e;\n'%self.getOption('adjgmresreltol'))
             f.write('    adjGMRESAbsTol         %e;\n'%self.getOption('adjgmresabstol'))
             f.write('    minTolJac              %e;\n'%self.getOption('mintoljac'))
             f.write('    maxTolJac              %e;\n'%self.getOption('maxtoljac'))
-            f.write('    minTolPC               %e;\n'%self.getOption('mintolpc')) 
-            f.write('    maxTolPC               %e;\n'%self.getOption('maxtolpc')) 
-            f.write('    stateResetTol          %e;\n'%self.getOption('stateresettol')) 
-            f.write('    tractionBCMaxIter      %d;\n'%self.getOption('tractionbcmaxiter'))              
-            f.write('    epsDeriv               %e;\n'%self.getOption('epsderiv'))  
+            f.write('    minTolPC               %e;\n'%self.getOption('mintolpc'))
+            f.write('    maxTolPC               %e;\n'%self.getOption('maxtolpc'))
+            f.write('    stateResetTol          %e;\n'%self.getOption('stateresettol'))
+            f.write('    tractionBCMaxIter      %d;\n'%self.getOption('tractionbcmaxiter'))
+            f.write('    epsDeriv               %e;\n'%self.getOption('epsderiv'))
             f.write('    epsDerivFFD            %e;\n'%self.getOption('epsderivffd'))
             f.write('    epsDerivXv             %e;\n'%self.getOption('epsderivxv'))
             f.write('    epsDerivUIn            %e;\n'%self.getOption('epsderivuin'))
             f.write('    epsDerivVis            %e;\n'%self.getOption('epsderivvis'))
-            
+
             scaling = ''
             statescaling = self.getOption('statescaling')
             for key in statescaling.keys():
@@ -5780,20 +5784,20 @@ class PYDAFOAM(AeroSolver):
             for key in residualscaling.keys():
                 scaling = scaling+' '+key+' '+str(residualscaling[key])
             f.write('    residualScaling        (%s);\n'%scaling)
-            
+
             maxResConLv4JacPCMat = self.getOption('maxresconlv4jacpcmat')
             pcConLv = ''
             for key in maxResConLv4JacPCMat.keys():
                 pcConLv = pcConLv+' '+key+' '+str(maxResConLv4JacPCMat[key])
             f.write('    maxResConLv4JacPCMat   (%s);\n'%pcConLv)
-            
+
             adjDVTypes = self.getOption('adjdvtypes')
             adjDVTypes = ' '.join(adjDVTypes)
             f.write('    adjDVTypes             (%s);\n'%adjDVTypes)
             f.write('}\n')
             f.write('\n')
 
-            #Actuator disk options 
+            #Actuator disk options
             f.write('actuatorDiskOptions\n')
             f.write('{\n')
             f.write('    actuatorActive         %d;\n'%self.getOption('actuatoractive'))
@@ -5817,7 +5821,7 @@ class PYDAFOAM(AeroSolver):
             f.write('}\n')
             f.write('\n')
 
-            #Objective function options 
+            #Objective function options
             objfuncs = self.getOption('objfuncs')
             objfuncs = ' '.join(objfuncs)
             objfuncgeoinfo = self.getOption('objfuncgeoinfo')
@@ -5831,7 +5835,7 @@ class PYDAFOAM(AeroSolver):
             f.write('{\n')
             f.write('    objFuncs               (%s);\n'%objfuncs)
             f.write('    objFuncGeoInfo         (%s);\n'%patches)
-            
+
             f.write('    dragDir                (')
             for dir1 in self.getOption('dragdir'):
                 f.write('%12.10f '%dir1)
@@ -5854,13 +5858,13 @@ class PYDAFOAM(AeroSolver):
             f.write('// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n')
             f.close()
         return
-        
+
 
     def _checkBoolean(self,var):
         if var:
             return 'true'
         else:
-            return 'false'               
+            return 'false'
 
 if __name__ == "__main__" :
   options = {}
